@@ -11,6 +11,7 @@ import { Check, BarChart3, Database, LogOut, Users } from 'lucide-react';
 
 export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
   const [showReportModal, setShowReportModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'nhap-lieu' | 'bao-cao' | 'quan-ly-user'>('nhap-lieu');
   
@@ -31,16 +32,17 @@ export default function App() {
     setIsAuthLoading(false);
   }, []);
 
-  // Fetch Transactions on Login
+  // Fetch Transactions and Students on Login
   useEffect(() => {
     if (token) {
       setIsDataLoading(true);
-      api.getTransactions()
-        .then(data => {
-          setTransactions(data);
+      Promise.all([api.getTransactions(), api.getStudents()])
+        .then(([txData, studentData]) => {
+          setTransactions(txData);
+          setStudents(studentData);
         })
         .catch(err => {
-          console.error('Lỗi khi tải dữ liệu giao dịch:', err);
+          console.error('Lỗi khi tải dữ liệu:', err);
           handleLogout();
         })
         .finally(() => {
@@ -80,6 +82,8 @@ export default function App() {
     try {
       const newTransaction = await api.createTransaction(data);
       setTransactions(prev => [newTransaction, ...prev]);
+      const studentData = await api.getStudents();
+      setStudents(studentData);
     } catch (err: any) {
       alert('Không thể thêm giao dịch: ' + err.message);
     }
@@ -214,7 +218,7 @@ export default function App() {
             
             {/* Left Column: Form */}
             <div className="flex flex-col gap-6">
-              <TransactionForm onSubmit={handleAddTransaction} />
+              <TransactionForm onSubmit={handleAddTransaction} students={students} />
               
               <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 text-sm text-indigo-800">
                 <h3 className="font-semibold mb-2 flex items-center gap-2">

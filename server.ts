@@ -226,6 +226,7 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
 
   try {
     const saved = await db.createTransaction(newTx);
+    await db.upsertStudent(newTx.studentName, newTx.className);
     res.status(201).json(saved);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -289,6 +290,16 @@ app.patch('/api/transactions/:id/invoice', authenticateToken, async (req, res) =
     } else {
       res.status(404).json({ message: 'Không tìm thấy giao dịch' });
     }
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Students routes
+app.get('/api/students', authenticateToken, async (req, res) => {
+  try {
+    const list = await db.getStudents();
+    res.json(list);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

@@ -4,9 +4,10 @@ import { CheckCircle2 } from 'lucide-react';
 
 interface TransactionFormProps {
   onSubmit: (data: any) => void;
+  students?: { id: string; name: string; className: string }[];
 }
 
-export default function TransactionForm({ onSubmit }: TransactionFormProps) {
+export default function TransactionForm({ onSubmit, students = [] }: TransactionFormProps) {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [studentName, setStudentName] = useState('');
   const [className, setClassName] = useState('');
@@ -99,11 +100,24 @@ export default function TransactionForm({ onSubmit }: TransactionFormProps) {
             <input
               type="text"
               required
+              list="students-list"
               placeholder="VD: Nguyễn Văn A"
               value={studentName}
-              onChange={(e) => setStudentName(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setStudentName(val);
+                const matched = students.find(s => s.name.toLowerCase() === val.toLowerCase().trim());
+                if (matched && matched.className) {
+                  setClassName(matched.className);
+                }
+              }}
               className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
             />
+            <datalist id="students-list">
+              {students.map((student) => (
+                <option key={student.id} value={student.name} />
+              ))}
+            </datalist>
           </div>
 
           <div>

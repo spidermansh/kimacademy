@@ -115,5 +115,8 @@ export const api = {
     return request(`/api/users/${id}`, {
       method: 'DELETE',
     });
+  },
+  async getStudents(): Promise<any[]> {
+    return request('/api/students');
   }
 };

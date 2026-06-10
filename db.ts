@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, 'data');
 const TRANSACTIONS_FILE = path.join(DATA_DIR, 'transactions.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const STUDENTS_FILE = path.join(DATA_DIR, 'students.json');
 
 const DEFAULT_USERS = [
   { id: '1', username: 'ketoan', password: 'password123', name: 'Nguyễn Kế Toán', role: 'admin' },
@@ -91,6 +92,9 @@ class DatabaseService {
     }
     if (!fs.existsSync(TRANSACTIONS_FILE)) {
       fs.writeFileSync(TRANSACTIONS_FILE, JSON.stringify([], null, 2), 'utf-8');
+    }
+    if (!fs.existsSync(STUDENTS_FILE)) {
+      fs.writeFileSync(STUDENTS_FILE, JSON.stringify([], null, 2), 'utf-8');
     }
   }
 
@@ -245,6 +249,71 @@ class DatabaseService {
       if (list.length === filtered.length) return false;
       fs.writeFileSync(USERS_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
       return true;
+    }
+  }
+
+  // --- Students ---
+  async getStudents(): Promise<any[]> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const list = await db.collection('students').find({}).toArray();
+      return list.map(({ _id, ...rest }) => rest);
+    } else {
+      try {
+        if (!fs.existsSync(STUDENTS_FILE)) {
+          fs.writeFileSync(STUDENTS_FILE, JSON.stringify([], null, 2), 'utf-8');
+        }
+        const data = fs.readFileSync(STUDENTS_FILE, 'utf-8');
+        return JSON.parse(data);
+      } catch (error) {
+        console.error('Error reading students file:', error);
+        return [];
+      }
+    }
+  }
+
+  async upsertStudent(studentName: string, className: string): Promise<any> {
+    const normalizedName = studentName.trim();
+    if (!normalizedName) return null;
+    
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const col = db.collection('students');
+      const existing = await col.findOne({ name: { $regex: new RegExp(`^${normalizedName}$`, 'i') } });
+      if (existing) {
+        await col.updateOne({ id: existing.id }, { $set: { className, updatedAt: new Date().toISOString() } });
+        return { ...existing, className };
+      } else {
+        const newStudent = {
+          id: Math.random().toString(36).substring(2, 9),
+          name: normalizedName,
+          className: className || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await col.insertOne(newStudent);
+        return newStudent;
+      }
+    } else {
+      const list = await this.getStudents();
+      const existingIndex = list.findIndex(s => s.name.toLowerCase() === normalizedName.toLowerCase());
+      if (existingIndex > -1) {
+        list[existingIndex].className = className || '';
+        list[existingIndex].updatedAt = new Date().toISOString();
+        fs.writeFileSync(STUDENTS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+        return list[existingIndex];
+      } else {
+        const newStudent = {
+          id: Math.random().toString(36).substring(2, 9),
+          name: normalizedName,
+          className: className || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        list.push(newStudent);
+        fs.writeFileSync(STUDENTS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+        return newStudent;
+      }
     }
   }
 }
