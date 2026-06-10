@@ -15,6 +15,7 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const STUDENTS_FILE = path.join(DATA_DIR, 'students.json');
 const CLASSES_FILE = path.join(DATA_DIR, 'classes.json');
 const ATTENDANCE_FILE = path.join(DATA_DIR, 'attendance.json');
+const ENROLLMENTS_FILE = path.join(DATA_DIR, 'enrollments.json');
 
 const DEFAULT_USERS = [
   { id: '1', username: 'ketoan', password: 'password123', name: 'Nguyễn Kế Toán', role: 'admin' },
@@ -99,6 +100,9 @@ class DatabaseService {
     }
     if (!fs.existsSync(ATTENDANCE_FILE)) {
       fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify([], null, 2), 'utf-8');
+    }
+    if (!fs.existsSync(ENROLLMENTS_FILE)) {
+      fs.writeFileSync(ENROLLMENTS_FILE, JSON.stringify([], null, 2), 'utf-8');
     }
   }
 
@@ -568,6 +572,137 @@ class DatabaseService {
       if (list.length === filtered.length) return false;
       fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
       return true;
+    }
+  }
+
+  // ─── Enrollments (Class Transfer History) ────────────────────────────────────
+  async getEnrollments(filters?: { studentId?: string; className?: string; isActive?: boolean }): Promise<any[]> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const query: any = {};
+      if (filters?.studentId) query.studentId = filters.studentId;
+      if (filters?.className) query.className = filters.className;
+      if (filters?.isActive !== undefined) query.isActive = filters.isActive;
+      const list = await db.collection('enrollments').find(query).toArray();
+      return list.map(({ _id, ...rest }) => rest);
+    } else {
+      try {
+        if (!fs.existsSync(ENROLLMENTS_FILE)) {
+          fs.writeFileSync(ENROLLMENTS_FILE, JSON.stringify([], null, 2), 'utf-8');
+        }
+        const data = fs.readFileSync(ENROLLMENTS_FILE, 'utf-8');
+        let list: any[] = JSON.parse(data);
+        if (filters?.studentId) list = list.filter(e => e.studentId === filters.studentId);
+        if (filters?.className) list = list.filter(e => e.className === filters.className);
+        if (filters?.isActive !== undefined) list = list.filter(e => e.isActive === filters.isActive);
+        return list;
+      } catch (error) {
+        console.error('Error reading enrollments file:', error);
+        return [];
+      }
+    }
+  }
+
+  async createEnrollment(enrollment: any): Promise<any> {
+    const newEnrollment = {
+      id: enrollment.id || Math.random().toString(36).substring(2, 9),
+      studentId: enrollment.studentId,
+      studentName: enrollment.studentName,
+      className: enrollment.className,
+      feePerSession: Number(enrollment.feePerSession) || 0,
+      startDate: enrollment.startDate,
+      endDate: enrollment.endDate || null,
+      isActive: enrollment.isActive !== false,
+      transferNote: enrollment.transferNote || '',
+      createdAt: new Date().toISOString(),
+    };
+
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      await db.collection('enrollments').insertOne(newEnrollment);
+      const { _id, ...rest } = newEnrollment as any;
+      return rest;
+    } else {
+      const list = await this.getEnrollments();
+      list.push(newEnrollment);
+      fs.writeFileSync(ENROLLMENTS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+      return newEnrollment;
+    }
+  }
+
+  /**
+   * transferClass: Đóng enrollment cũ + mở enrollment mới + cập nhật student.className
+   */
+  async transferClass(payload: {
+    studentId: string;
+    studentName: string;
+    newClassName: string;
+    newFeePerSession: number;
+    transferDate: string;
+    transferNote?: string;
+  }): Promise<{ oldEnrollment: any; newEnrollment: any; student: any }> {
+    const { studentId, studentName, newClassName, newFeePerSession, transferDate, transferNote } = payload;
+    const now = new Date().toISOString();
+
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      // 1. Close all active enrollments for this student
+      await db.collection('enrollments').updateMany(
+        { studentId, isActive: true },
+        { $set: { isActive: false, endDate: transferDate } }
+      );
+      // 2. Create new enrollment
+      const newEnrollment = {
+        id: Math.random().toString(36).substring(2, 9),
+        studentId, studentName,
+        className: newClassName,
+        feePerSession: newFeePerSession,
+        startDate: transferDate,
+        endDate: null,
+        isActive: true,
+        transferNote: transferNote || '',
+        createdAt: now,
+      };
+      await db.collection('enrollments').insertOne(newEnrollment);
+      // 3. Update student
+      await db.collection('students').updateOne(
+        { id: studentId },
+        { $set: { className: newClassName, feePerSession: newFeePerSession, updatedAt: now } }
+      );
+      const student = await db.collection('students').findOne({ id: studentId });
+      const { _id: s_id, ...studentRest } = (student || {}) as any;
+      const { _id: e_id, ...enrollRest } = newEnrollment as any;
+      return { oldEnrollment: null, newEnrollment: enrollRest, student: studentRest };
+    } else {
+      // File-based fallback
+      let enrollments = await this.getEnrollments();
+      const closed = enrollments
+        .filter(e => e.studentId === studentId && e.isActive)
+        .map(e => ({ ...e, isActive: false, endDate: transferDate }));
+      enrollments = enrollments.map(e =>
+        e.studentId === studentId && e.isActive ? { ...e, isActive: false, endDate: transferDate } : e
+      );
+      const newEnrollment = {
+        id: Math.random().toString(36).substring(2, 9),
+        studentId, studentName,
+        className: newClassName,
+        feePerSession: newFeePerSession,
+        startDate: transferDate,
+        endDate: null,
+        isActive: true,
+        transferNote: transferNote || '',
+        createdAt: now,
+      };
+      enrollments.push(newEnrollment);
+      fs.writeFileSync(ENROLLMENTS_FILE, JSON.stringify(enrollments, null, 2), 'utf-8');
+      // Update student
+      const students = await this.getStudents();
+      const idx = students.findIndex(s => s.id === studentId);
+      if (idx > -1) {
+        students[idx] = { ...students[idx], className: newClassName, feePerSession: newFeePerSession, updatedAt: now };
+        fs.writeFileSync(STUDENTS_FILE, JSON.stringify(students, null, 2), 'utf-8');
+      }
+      return { oldEnrollment: closed[0] || null, newEnrollment, student: students[idx] || null };
     }
   }
 }

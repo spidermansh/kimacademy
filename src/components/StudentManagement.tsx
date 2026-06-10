@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils';
+import ClassTransferModal from './ClassTransferModal';
 import {
   Users, Plus, Pencil, Trash2, X, Save, Search,
-  Phone, Calendar, BookOpen, UserCircle, GraduationCap, Wallet
+  Phone, Calendar, BookOpen, UserCircle, GraduationCap, Wallet, ArrowRight
 } from 'lucide-react';
 
 interface StudentFormData {
@@ -37,9 +38,11 @@ const extractVietnameseName = (name: string): string => {
 
 export default function StudentManagement({
   classes = [],
+  transactions = [],
   onStudentsUpdated,
 }: {
   classes?: { id: string; name: string; type: string }[];
+  transactions?: any[];
   onStudentsUpdated?: (students: any[]) => void;
 }) {
   const [students, setStudents] = useState<any[]>([]);
@@ -51,6 +54,7 @@ export default function StudentManagement({
   const [form, setForm] = useState<StudentFormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [isVietNameManual, setIsVietNameManual] = useState(false);
+  const [transferStudent, setTransferStudent] = useState<any | null>(null);
 
   useEffect(() => {
     loadStudents();
@@ -295,6 +299,13 @@ export default function StudentManagement({
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-1 justify-end">
                       <button
+                        onClick={() => setTransferStudent(student)}
+                        className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors"
+                        title="Chuyển lớp"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => openEdit(student)}
                         className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
                         title="Chỉnh sửa"
@@ -508,6 +519,21 @@ export default function StudentManagement({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Class Transfer Modal */}
+      {transferStudent && (
+        <ClassTransferModal
+          student={transferStudent}
+          transactions={transactions}
+          classes={classes}
+          onConfirm={(updatedStudent) => {
+            setStudents(prev => prev.map(s => s.id === updatedStudent?.id ? { ...s, ...updatedStudent } : s));
+            loadStudents();
+            setTransferStudent(null);
+          }}
+          onClose={() => setTransferStudent(null)}
+        />
       )}
     </div>
   );

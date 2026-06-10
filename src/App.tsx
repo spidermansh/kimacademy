@@ -302,6 +302,7 @@ export default function App() {
         ) : activeTab === 'quan-ly-hoc-vien' ? (
           <StudentManagement
             classes={classes}
+            transactions={transactions}
             onStudentsUpdated={(updated) => setStudents(updated)}
           />
 

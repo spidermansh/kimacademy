@@ -60,14 +60,31 @@ export interface AttendanceRecord {
   createdAt: string;
 }
 
+// Ghi nhận giai đoạn học viên đăng ký lớp (hỗ trợ chuyển lớp)
+export interface Enrollment {
+  id: string;
+  studentId: string;
+  studentName: string;
+  className: string;         // Tên lớp
+  feePerSession: number;     // HP/buổi riêng của giai đoạn này
+  startDate: string;         // Ngày bắt đầu (YYYY-MM-DD)
+  endDate?: string;          // Ngày kết thúc (undefined = đang học)
+  isActive: boolean;         // Giai đoạn đang hoạt động
+  transferNote?: string;     // Lý do chuyển lớp
+  createdAt: string;
+}
+
 // Tổng hợp học phí cho từng học viên (computed)
 export interface TuitionSummary {
   studentId: string;
   studentName: string;
-  className: string;
+  className: string;           // lớp hiện tại
   feePerSession: number;
-  totalPaidOffline: number;   // Tổng tiền đóng học phí offline
-  totalSessionsBought: number; // = totalPaidOffline / feePerSession
-  totalSessionsUsed: number;   // = số buổi đã học (present + absent)
-  sessionsRemaining: number;   // = totalSessionsBought - totalSessionsUsed
+  totalPaidOffline: number;    // Tổng tiền đóng học phí offline
+  totalCostUsed: number;       // Tiền đã dùng (tính theo từng giai đoạn)
+  moneyRemaining: number;      // Tiền còn lại
+  totalSessionsBought: number; // Tổng buổi đã mua (tương đương tiền đóng)
+  totalSessionsUsed: number;   // Buổi đã học (present + absent) TOÀN giai đoạn
+  sessionsRemaining: number;   // Buổi còn lại tính theo lớp hiện tại
+  enrollments?: Enrollment[];  // Lịch sử các giai đoạn học
 }

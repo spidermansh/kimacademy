@@ -177,4 +177,32 @@ export const api = {
       method: 'DELETE',
     });
   },
+  // Enrollments
+  async getEnrollments(filters?: { studentId?: string; className?: string; isActive?: boolean }): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (filters?.studentId) params.set('studentId', filters.studentId);
+    if (filters?.className) params.set('className', filters.className);
+    if (filters?.isActive !== undefined) params.set('isActive', String(filters.isActive));
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return request(`/api/enrollments${query}`);
+  },
+  async createEnrollment(enrollment: any): Promise<any> {
+    return request('/api/enrollments', {
+      method: 'POST',
+      body: JSON.stringify(enrollment),
+    });
+  },
+  async transferClass(payload: {
+    studentId: string;
+    studentName: string;
+    newClassName: string;
+    newFeePerSession: number;
+    transferDate: string;
+    transferNote?: string;
+  }): Promise<any> {
+    return request('/api/enrollments/transfer', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };

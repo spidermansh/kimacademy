@@ -436,6 +436,48 @@ app.delete('/api/attendance/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Enrollments ─────────────────────────────────────────────────────────────
+app.get('/api/enrollments', authenticateToken, async (req, res) => {
+  try {
+    const { studentId, className, isActive } = req.query;
+    const filters: any = {};
+    if (studentId) filters.studentId = studentId as string;
+    if (className) filters.className = className as string;
+    if (isActive !== undefined) filters.isActive = isActive === 'true';
+    const list = await db.getEnrollments(filters);
+    res.json(list);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/enrollments', authenticateToken, async (req, res) => {
+  try {
+    const created = await db.createEnrollment(req.body);
+    res.status(201).json(created);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Chuyển lớp: đóng enrollment cũ + mở enrollment mới + cập nhật student.className
+app.post('/api/enrollments/transfer', authenticateToken, async (req, res) => {
+  try {
+    const { studentId, studentName, newClassName, newFeePerSession, transferDate, transferNote } = req.body;
+    if (!studentId || !newClassName || !transferDate) {
+      return res.status(400).json({ message: 'Thiếu thông tin chuyển lớp (studentId, newClassName, transferDate)' });
+    }
+    const result = await db.transferClass({
+      studentId, studentName, newClassName,
+      newFeePerSession: Number(newFeePerSession) || 0,
+      transferDate, transferNote,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Fallback all frontend routes to index.html
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
