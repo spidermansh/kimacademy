@@ -28,13 +28,18 @@ export default function ClassTransferModal({
   // Load attendance + enrollment history for this student
   useEffect(() => {
     Promise.all([
-      api.getAttendance({ studentId: student.id }),
+      api.getAttendance(),          // fetch ALL — filter client-side (same as TuitionManagement)
       api.getEnrollments({ studentId: student.id }),
-    ]).then(([att, enr]) => {
-      setAttendanceHistory(att);
+    ]).then(([allAtt, enr]) => {
+      // Filter attendance by studentId OR studentName (resilient to old records)
+      const filtered = allAtt.filter((a: any) =>
+        a.studentId === student.id ||
+        a.studentName?.toLowerCase() === student.name?.toLowerCase()
+      );
+      setAttendanceHistory(filtered);
       setEnrollmentHistory(enr);
     }).catch(() => {});
-  }, [student.id]);
+  }, [student.id, student.name]);
 
   // ── Tính tiền đã dùng theo từng giai đoạn enrollment ──────────────────────
   const totalPaidOffline = transactions
@@ -58,10 +63,15 @@ export default function ClassTransferModal({
       return { ...enr, sessionsUsed, costUsed };
     });
 
-  // Nếu học viên chưa có enrollment history (học viên cũ), tính theo cách cũ
+  // Fallback khi chưa có enrollment history (học viên cũ)
+  // Buổi đã dùng = tất cả buổi present + absent
+  const totalSessionsUsed = enrollmentStats.length > 0
+    ? enrollmentStats.reduce((s, e) => s + e.sessionsUsed, 0)
+    : attendanceHistory.filter(a => a.status !== 'excused').length;
+
   const totalCostUsed = enrollmentStats.length > 0
     ? enrollmentStats.reduce((s, e) => s + e.costUsed, 0)
-    : attendanceHistory.filter(a => a.status !== 'excused').length * (student.feePerSession || 0);
+    : totalSessionsUsed * (student.feePerSession || 0);
 
   const moneyRemaining = totalPaidOffline - totalCostUsed;
   const newFee = parseInt(newFeePerSession.replace(/\D/g, '') || '0', 10);
@@ -106,14 +116,9 @@ export default function ClassTransferModal({
     }
   };
 
-  const currentSessions = attendanceHistory.filter(a => {
-    if (enrollmentHistory.length === 0) return a.status !== 'excused';
-    const activeEnr = enrollmentHistory.find(e => e.isActive);
-    if (!activeEnr) return false;
-    return a.className?.toLowerCase() === activeEnr.className.toLowerCase()
-      && a.date >= activeEnr.startDate
-      && a.status !== 'excused';
-  }).length;
+  const currentSessions = enrollmentStats.length > 0
+    ? (enrollmentStats.find(e => e.isActive)?.sessionsUsed ?? 0)
+    : attendanceHistory.filter(a => a.status !== 'excused').length;
 
   const currentFee = student.feePerSession || 0;
   const currentTotalBought = currentFee > 0 ? Math.floor(totalPaidOffline / currentFee) : 0;
@@ -166,7 +171,7 @@ export default function ClassTransferModal({
                 <span className="font-semibold text-slate-700">{totalPaidOffline.toLocaleString('vi-VN')}đ</span>
               </div>
               <div className="flex justify-between">
-                <span>Đã dùng ({currentSessions} buổi × {currentFee.toLocaleString('vi-VN')}đ):</span>
+                <span>Đã dùng ({currentSessions} buổi × {(student.feePerSession || 0).toLocaleString('vi-VN')}đ):</span>
                 <span className="font-semibold text-red-500">−{totalCostUsed.toLocaleString('vi-VN')}đ</span>
               </div>
             </div>
