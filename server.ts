@@ -9,7 +9,6 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Define __dirname in ES Module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -50,7 +49,6 @@ function authenticateToken(req: express.Request, res: express.Response, next: ex
   next();
 }
 
-// Extend Request type to include user
 declare global {
   namespace Express {
     interface Request {
@@ -59,7 +57,7 @@ declare global {
   }
 }
 
-// Auth Routes
+// ─── Auth Routes ─────────────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   
@@ -104,7 +102,7 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
   res.json({ user: req.user });
 });
 
-// Users Management Routes (Admin only)
+// ─── Users Routes ─────────────────────────────────────────────────────────────
 app.get('/api/users', authenticateToken, async (req, res) => {
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
@@ -189,7 +187,7 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy người dùng' });
     }
     
-    if (userToDelete.username === req.user.username) {
+    if (userToDelete.username === req.user!.username) {
       return res.status(400).json({ message: 'Không thể tự xóa tài khoản của chính mình!' });
     }
     
@@ -204,7 +202,7 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Transactions Routes
+// ─── Transactions Routes ──────────────────────────────────────────────────────
 app.get('/api/transactions', authenticateToken, async (req, res) => {
   try {
     const list = await db.getTransactions();
@@ -295,7 +293,7 @@ app.patch('/api/transactions/:id/invoice', authenticateToken, async (req, res) =
   }
 });
 
-// Students routes
+// ─── Students Routes ──────────────────────────────────────────────────────────
 app.get('/api/students', authenticateToken, async (req, res) => {
   try {
     const list = await db.getStudents();
@@ -305,7 +303,140 @@ app.get('/api/students', authenticateToken, async (req, res) => {
   }
 });
 
-// Fallback all frontend routes to index.html (for React SPA routing in production)
+app.post('/api/students', authenticateToken, async (req, res) => {
+  try {
+    const studentData = req.body;
+    const saved = await db.createStudent(studentData);
+    res.status(201).json(saved);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.put('/api/students/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const updated = await db.updateStudent(id, req.body);
+    if (updated) {
+      res.json(updated);
+    } else {
+      res.status(404).json({ message: 'Không tìm thấy học viên' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete('/api/students/:id', authenticateToken, async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+  }
+  const { id } = req.params;
+  try {
+    const success = await db.deleteStudent(id);
+    if (success) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ message: 'Không tìm thấy học viên' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── Classes Routes ───────────────────────────────────────────────────────────
+app.get('/api/classes', authenticateToken, async (req, res) => {
+  try {
+    const list = await db.getClasses();
+    res.json(list);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/classes', authenticateToken, async (req, res) => {
+  try {
+    const saved = await db.createClass(req.body);
+    res.status(201).json(saved);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.put('/api/classes/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const updated = await db.updateClass(id, req.body);
+    if (updated) {
+      res.json(updated);
+    } else {
+      res.status(404).json({ message: 'Không tìm thấy lớp học' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete('/api/classes/:id', authenticateToken, async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+  }
+  const { id } = req.params;
+  try {
+    const success = await db.deleteClass(id);
+    if (success) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ message: 'Không tìm thấy lớp học' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─── Attendance Routes ────────────────────────────────────────────────────────
+app.get('/api/attendance', authenticateToken, async (req, res) => {
+  try {
+    const { date, classId, studentId } = req.query;
+    const filters: any = {};
+    if (date) filters.date = date as string;
+    if (classId) filters.classId = classId as string;
+    if (studentId) filters.studentId = studentId as string;
+    const list = await db.getAttendance(filters);
+    res.json(list);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/attendance/batch', authenticateToken, async (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ message: 'Dữ liệu điểm danh không hợp lệ' });
+    }
+    const saved = await db.createAttendanceBatch(records);
+    res.status(201).json(saved);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete('/api/attendance/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const success = await db.deleteAttendance(id);
+    if (success) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ message: 'Không tìm thấy bản ghi điểm danh' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Fallback all frontend routes to index.html
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });

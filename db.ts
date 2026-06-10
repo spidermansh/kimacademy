@@ -13,6 +13,8 @@ const DATA_DIR = path.join(__dirname, 'data');
 const TRANSACTIONS_FILE = path.join(DATA_DIR, 'transactions.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const STUDENTS_FILE = path.join(DATA_DIR, 'students.json');
+const CLASSES_FILE = path.join(DATA_DIR, 'classes.json');
+const ATTENDANCE_FILE = path.join(DATA_DIR, 'attendance.json');
 
 const DEFAULT_USERS = [
   { id: '1', username: 'ketoan', password: 'password123', name: 'Nguyễn Kế Toán', role: 'admin' },
@@ -30,7 +32,6 @@ class DatabaseService {
     if (mongoUri) {
       this.isCloud = true;
       this.mongoClient = new MongoClient(mongoUri);
-      // Try to extract database name from URI if present, e.g. /kim_academy?
       const match = mongoUri.match(/\/([^/?]+)(\?|$)/);
       if (match && match[1]) {
         this.dbName = match[1];
@@ -45,7 +46,6 @@ class DatabaseService {
         await this.mongoClient.connect();
         console.log('✅ Connected to MongoDB Atlas successfully.');
         
-        // Seed default users if users collection is empty
         const db = this.mongoClient.db(this.dbName);
         const usersCol = db.collection('users');
         const count = await usersCol.countDocuments();
@@ -53,7 +53,6 @@ class DatabaseService {
           console.log('🌱 Seeding default users into MongoDB Atlas...');
           await usersCol.insertMany(DEFAULT_USERS);
         } else {
-          // Migration: Ensure 'admin' user is present in MongoDB
           const adminExists = await usersCol.findOne({ username: 'admin' });
           if (!adminExists) {
             console.log('🌱 Migrating admin user into MongoDB Atlas...');
@@ -78,7 +77,6 @@ class DatabaseService {
     if (!fs.existsSync(USERS_FILE)) {
       fs.writeFileSync(USERS_FILE, JSON.stringify(DEFAULT_USERS, null, 2), 'utf-8');
     } else {
-      // Migration: Ensure 'admin' user is present in users.json
       try {
         const data = fs.readFileSync(USERS_FILE, 'utf-8');
         const users = JSON.parse(data);
@@ -96,15 +94,19 @@ class DatabaseService {
     if (!fs.existsSync(STUDENTS_FILE)) {
       fs.writeFileSync(STUDENTS_FILE, JSON.stringify([], null, 2), 'utf-8');
     }
+    if (!fs.existsSync(CLASSES_FILE)) {
+      fs.writeFileSync(CLASSES_FILE, JSON.stringify([], null, 2), 'utf-8');
+    }
+    if (!fs.existsSync(ATTENDANCE_FILE)) {
+      fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify([], null, 2), 'utf-8');
+    }
   }
 
-  // --- Transactions ---
+  // ─── Transactions ────────────────────────────────────────────────────────────
   async getTransactions(): Promise<any[]> {
     if (this.isCloud && this.mongoClient) {
       const db = this.mongoClient.db(this.dbName);
-      // Retrieve and sort by paymentDate then createdAt (or _id)
       const list = await db.collection('transactions').find({}).toArray();
-      // Clean up Mongo properties (_id) from returned objects to keep schema clean
       return list.map(({ _id, ...rest }) => rest);
     } else {
       try {
@@ -186,7 +188,7 @@ class DatabaseService {
     }
   }
 
-  // --- Users ---
+  // ─── Users ───────────────────────────────────────────────────────────────────
   async getUsers(): Promise<any[]> {
     if (this.isCloud && this.mongoClient) {
       const db = this.mongoClient.db(this.dbName);
@@ -252,7 +254,7 @@ class DatabaseService {
     }
   }
 
-  // --- Students ---
+  // ─── Students ────────────────────────────────────────────────────────────────
   async getStudents(): Promise<any[]> {
     if (this.isCloud && this.mongoClient) {
       const db = this.mongoClient.db(this.dbName);
@@ -288,6 +290,7 @@ class DatabaseService {
           id: Math.random().toString(36).substring(2, 9),
           name: normalizedName,
           className: className || '',
+          feePerSession: 0,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -307,6 +310,7 @@ class DatabaseService {
           id: Math.random().toString(36).substring(2, 9),
           name: normalizedName,
           className: className || '',
+          feePerSession: 0,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -314,6 +318,256 @@ class DatabaseService {
         fs.writeFileSync(STUDENTS_FILE, JSON.stringify(list, null, 2), 'utf-8');
         return newStudent;
       }
+    }
+  }
+
+  async createStudent(student: any): Promise<any> {
+    const normalizedName = student.name.trim();
+    if (!normalizedName) return null;
+
+    const newStudent = {
+      id: student.id || Math.random().toString(36).substring(2, 9),
+      name: normalizedName,
+      vietnameseName: student.vietnameseName || '',
+      englishName: student.englishName || '',
+      vietAnhName: student.vietAnhName || '',
+      className: student.className || '',
+      gender: student.gender || '',
+      birthYear: student.birthYear ? Number(student.birthYear) : 0,
+      parentPhone: student.parentPhone || '',
+      feePerSession: student.feePerSession ? Number(student.feePerSession) : 0,
+      createdAt: student.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const col = db.collection('students');
+      
+      const existing = await col.findOne({ name: { $regex: new RegExp(`^${normalizedName}$`, 'i') } });
+      if (existing) {
+        const updatedFields = { ...newStudent } as any;
+        delete updatedFields.id;
+        delete updatedFields.createdAt;
+        
+        await col.updateOne({ id: existing.id }, { $set: updatedFields });
+        return { ...existing, ...updatedFields };
+      }
+      
+      await col.insertOne(newStudent);
+      const { _id, ...rest } = newStudent as any;
+      return rest;
+    } else {
+      const list = await this.getStudents();
+      const existingIndex = list.findIndex(s => s.name.toLowerCase() === normalizedName.toLowerCase());
+      if (existingIndex > -1) {
+        list[existingIndex] = {
+          ...list[existingIndex],
+          ...newStudent,
+          id: list[existingIndex].id,
+          createdAt: list[existingIndex].createdAt
+        };
+        fs.writeFileSync(STUDENTS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+        return list[existingIndex];
+      } else {
+        list.push(newStudent);
+        fs.writeFileSync(STUDENTS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+        return newStudent;
+      }
+    }
+  }
+
+  async updateStudent(id: string, updates: any): Promise<any> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const updateData = { ...updates, updatedAt: new Date().toISOString() };
+      await db.collection('students').updateOne({ id }, { $set: updateData });
+      const updated = await db.collection('students').findOne({ id });
+      if (updated) {
+        const { _id, ...rest } = updated;
+        return rest;
+      }
+      return null;
+    } else {
+      const list = await this.getStudents();
+      const index = list.findIndex(s => s.id === id);
+      if (index === -1) return null;
+      list[index] = { ...list[index], ...updates, updatedAt: new Date().toISOString() };
+      fs.writeFileSync(STUDENTS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+      return list[index];
+    }
+  }
+
+  async deleteStudent(id: string): Promise<boolean> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const res = await db.collection('students').deleteOne({ id });
+      return (res.deletedCount ?? 0) > 0;
+    } else {
+      const list = await this.getStudents();
+      const filtered = list.filter(s => s.id !== id);
+      if (list.length === filtered.length) return false;
+      fs.writeFileSync(STUDENTS_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+      return true;
+    }
+  }
+
+  // ─── Classes ─────────────────────────────────────────────────────────────────
+  async getClasses(): Promise<any[]> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const list = await db.collection('classes').find({}).toArray();
+      return list.map(({ _id, ...rest }) => rest);
+    } else {
+      try {
+        if (!fs.existsSync(CLASSES_FILE)) {
+          fs.writeFileSync(CLASSES_FILE, JSON.stringify([], null, 2), 'utf-8');
+        }
+        const data = fs.readFileSync(CLASSES_FILE, 'utf-8');
+        return JSON.parse(data);
+      } catch (error) {
+        console.error('Error reading classes file:', error);
+        return [];
+      }
+    }
+  }
+
+  async createClass(cls: any): Promise<any> {
+    const newClass = {
+      id: cls.id || Math.random().toString(36).substring(2, 9),
+      name: cls.name,
+      type: cls.type || 'offline',
+      schedule: cls.schedule || '',
+      teacher: cls.teacher || '',
+      description: cls.description || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      await db.collection('classes').insertOne(newClass);
+      const { _id, ...rest } = newClass as any;
+      return rest;
+    } else {
+      const list = await this.getClasses();
+      list.push(newClass);
+      fs.writeFileSync(CLASSES_FILE, JSON.stringify(list, null, 2), 'utf-8');
+      return newClass;
+    }
+  }
+
+  async updateClass(id: string, updates: any): Promise<any> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const updateData = { ...updates, updatedAt: new Date().toISOString() };
+      await db.collection('classes').updateOne({ id }, { $set: updateData });
+      const updated = await db.collection('classes').findOne({ id });
+      if (updated) {
+        const { _id, ...rest } = updated;
+        return rest;
+      }
+      return null;
+    } else {
+      const list = await this.getClasses();
+      const index = list.findIndex(c => c.id === id);
+      if (index === -1) return null;
+      list[index] = { ...list[index], ...updates, updatedAt: new Date().toISOString() };
+      fs.writeFileSync(CLASSES_FILE, JSON.stringify(list, null, 2), 'utf-8');
+      return list[index];
+    }
+  }
+
+  async deleteClass(id: string): Promise<boolean> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const res = await db.collection('classes').deleteOne({ id });
+      return (res.deletedCount ?? 0) > 0;
+    } else {
+      const list = await this.getClasses();
+      const filtered = list.filter(c => c.id !== id);
+      if (list.length === filtered.length) return false;
+      fs.writeFileSync(CLASSES_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+      return true;
+    }
+  }
+
+  // ─── Attendance ──────────────────────────────────────────────────────────────
+  async getAttendance(filters?: { date?: string; classId?: string; studentId?: string }): Promise<any[]> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const query: any = {};
+      if (filters?.date) query.date = filters.date;
+      if (filters?.classId) query.classId = filters.classId;
+      if (filters?.studentId) query.studentId = filters.studentId;
+      const list = await db.collection('attendance').find(query).toArray();
+      return list.map(({ _id, ...rest }) => rest);
+    } else {
+      try {
+        if (!fs.existsSync(ATTENDANCE_FILE)) {
+          fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify([], null, 2), 'utf-8');
+        }
+        const data = fs.readFileSync(ATTENDANCE_FILE, 'utf-8');
+        let list: any[] = JSON.parse(data);
+        if (filters?.date) list = list.filter(a => a.date === filters.date);
+        if (filters?.classId) list = list.filter(a => a.classId === filters.classId);
+        if (filters?.studentId) list = list.filter(a => a.studentId === filters.studentId);
+        return list;
+      } catch (error) {
+        console.error('Error reading attendance file:', error);
+        return [];
+      }
+    }
+  }
+
+  async createAttendanceBatch(records: any[]): Promise<any[]> {
+    const now = new Date().toISOString();
+    const newRecords = records.map(r => ({
+      id: r.id || Math.random().toString(36).substring(2, 9),
+      date: r.date,
+      classId: r.classId,
+      className: r.className,
+      studentId: r.studentId,
+      studentName: r.studentName,
+      status: r.status, // present | absent | excused
+      sessionsDeducted: r.status === 'excused' ? 0 : 1, // vắng có phép không trừ
+      createdAt: now
+    }));
+
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      // Remove existing records for this date+class before re-inserting
+      if (newRecords.length > 0) {
+        await db.collection('attendance').deleteMany({
+          date: newRecords[0].date,
+          classId: newRecords[0].classId
+        });
+        await db.collection('attendance').insertMany(newRecords);
+      }
+      return newRecords;
+    } else {
+      let list = await this.getAttendance();
+      if (newRecords.length > 0) {
+        // Remove existing records for this date+class
+        list = list.filter(a => !(a.date === newRecords[0].date && a.classId === newRecords[0].classId));
+        list.push(...newRecords);
+        fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify(list, null, 2), 'utf-8');
+      }
+      return newRecords;
+    }
+  }
+
+  async deleteAttendance(id: string): Promise<boolean> {
+    if (this.isCloud && this.mongoClient) {
+      const db = this.mongoClient.db(this.dbName);
+      const res = await db.collection('attendance').deleteOne({ id });
+      return (res.deletedCount ?? 0) > 0;
+    } else {
+      const list = await this.getAttendance();
+      const filtered = list.filter(a => a.id !== id);
+      if (list.length === filtered.length) return false;
+      fs.writeFileSync(ATTENDANCE_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+      return true;
     }
   }
 }

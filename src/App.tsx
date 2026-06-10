@@ -4,16 +4,41 @@ import TransactionTable from './components/TransactionTable';
 import DailyReportModal from './components/DailyReportModal';
 import ReportsDashboard from './components/ReportsDashboard';
 import UserManagement from './components/UserManagement';
+import StudentRegisterModal from './components/StudentRegisterModal';
+import ClassManagement from './components/ClassManagement';
+import AttendanceManagement from './components/AttendanceManagement';
+import TuitionManagement from './components/TuitionManagement';
 import Login from './components/Login';
 import { Transaction } from './types';
 import { api, auth } from './utils';
-import { Check, BarChart3, Database, LogOut, Users } from 'lucide-react';
+import { Check, BarChart3, LogOut, Users, BookOpen, CalendarDays, Wallet, DollarSign } from 'lucide-react';
+
+type TabId = 'thu-tien' | 'quan-ly-lop' | 'diem-danh' | 'hoc-phi' | 'bao-cao' | 'quan-ly-user';
+
+interface NavItem {
+  id: TabId;
+  label: string;
+  icon: React.ReactNode;
+  adminOnly?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { id: 'thu-tien',      label: 'Thu tiền',    icon: <DollarSign className="w-4 h-4" /> },
+  { id: 'quan-ly-lop',   label: 'Lớp học',     icon: <BookOpen className="w-4 h-4" /> },
+  { id: 'diem-danh',     label: 'Điểm danh',   icon: <CalendarDays className="w-4 h-4" /> },
+  { id: 'hoc-phi',       label: 'Học phí',      icon: <Wallet className="w-4 h-4" /> },
+  { id: 'bao-cao',       label: 'Báo cáo',     icon: <BarChart3 className="w-4 h-4" />, adminOnly: true },
+  { id: 'quan-ly-user',  label: 'Người dùng',  icon: <Users className="w-4 h-4" />, adminOnly: true },
+];
 
 export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [students, setStudents] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [pendingTransaction, setPendingTransaction] = useState<any | null>(null);
+  const [showStudentModal, setShowStudentModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'nhap-lieu' | 'bao-cao' | 'quan-ly-user'>('nhap-lieu');
+  const [activeTab, setActiveTab] = useState<TabId>('thu-tien');
   
   // Auth state
   const [user, setUser] = useState<{ username: string; name: string; role: string } | null>(null);
@@ -32,14 +57,19 @@ export default function App() {
     setIsAuthLoading(false);
   }, []);
 
-  // Fetch Transactions and Students on Login
+  // Fetch all data on Login
   useEffect(() => {
     if (token) {
       setIsDataLoading(true);
-      Promise.all([api.getTransactions(), api.getStudents()])
-        .then(([txData, studentData]) => {
+      Promise.all([
+        api.getTransactions(),
+        api.getStudents(),
+        api.getClasses(),
+      ])
+        .then(([txData, studentData, classData]) => {
           setTransactions(txData);
           setStudents(studentData);
+          setClasses(classData);
         })
         .catch(err => {
           console.error('Lỗi khi tải dữ liệu:', err);
@@ -56,7 +86,7 @@ export default function App() {
     auth.setUser(newUser);
     setToken(newToken);
     setUser(newUser);
-    setActiveTab('nhap-lieu'); // Reset tab to main
+    setActiveTab('thu-tien');
   };
 
   const handleLogout = async () => {
@@ -64,9 +94,7 @@ export default function App() {
       if (token) {
         await fetch('/api/auth/logout', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          headers: { 'Authorization': `Bearer ${token}` }
         });
       }
     } catch (e) {
@@ -76,9 +104,11 @@ export default function App() {
     setToken(null);
     setUser(null);
     setTransactions([]);
+    setStudents([]);
+    setClasses([]);
   };
 
-  const handleAddTransaction = async (data: Omit<Transaction, 'id' | 'createdAt' | 'isReconciled' | 'isInvoiced'>) => {
+  const submitTransaction = async (data: any) => {
     try {
       const newTransaction = await api.createTransaction(data);
       setTransactions(prev => [newTransaction, ...prev]);
@@ -89,12 +119,42 @@ export default function App() {
     }
   };
 
+  const handleAddTransaction = async (data: Omit<Transaction, 'id' | 'createdAt' | 'isReconciled' | 'isInvoiced'>) => {
+    const normalizedName = data.studentName.trim().toLowerCase();
+    const exists = students.some(s => s.name.toLowerCase() === normalizedName);
+    
+    if (exists) {
+      await submitTransaction(data);
+    } else {
+      setPendingTransaction(data);
+      setShowStudentModal(true);
+    }
+  };
+
+  const handleSaveNewStudent = async (studentData: any) => {
+    try {
+      await api.createStudent(studentData);
+      
+      if (pendingTransaction) {
+        const updatedTx = {
+          ...pendingTransaction,
+          studentName: studentData.name,
+          className: studentData.className
+        };
+        await submitTransaction(updatedTx);
+      }
+      
+      setShowStudentModal(false);
+      setPendingTransaction(null);
+    } catch (err: any) {
+      alert('Không thể lưu thông tin học viên: ' + err.message);
+    }
+  };
+
   const handleToggleReconciled = async (id: string, currentStatus: boolean) => {
     try {
       const updated = await api.toggleReconciled(id, !currentStatus);
-      setTransactions(prev => prev.map(t => 
-        t.id === id ? updated : t
-      ));
+      setTransactions(prev => prev.map(t => t.id === id ? updated : t));
     } catch (err: any) {
       alert('Không thể đối chiếu giao dịch: ' + err.message);
     }
@@ -107,9 +167,7 @@ export default function App() {
     }
     try {
       const updated = await api.toggleInvoiced(id, !currentStatus);
-      setTransactions(prev => prev.map(t => 
-        t.id === id ? updated : t
-      ));
+      setTransactions(prev => prev.map(t => t.id === id ? updated : t));
     } catch (err: any) {
       alert('Không thể cập nhật hóa đơn: ' + err.message);
     }
@@ -143,55 +201,48 @@ export default function App() {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const visibleNavItems = NAV_ITEMS.filter(item => !item.adminOnly || user.role === 'admin');
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-indigo-100 selection:text-indigo-900 overflow-hidden flex flex-col">
       {/* Header */}
-      <header className="h-16 bg-indigo-900 text-white flex items-center justify-between px-8 border-b border-indigo-950 shadow-md shrink-0">
+      <header className="h-16 bg-indigo-900 text-white flex items-center justify-between px-6 border-b border-indigo-950 shadow-md shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white rounded-md flex items-center justify-center">
+          <div className="w-10 h-10 bg-white rounded-md flex items-center justify-center shrink-0">
             <span className="text-indigo-900 font-bold text-xl">KA</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold leading-tight uppercase tracking-wider">
-              Kim Academy
-            </h1>
+            <h1 className="text-base font-bold leading-tight uppercase tracking-wider">Kim Academy</h1>
             <p className="text-[10px] text-indigo-300 uppercase tracking-widest mt-0.5">
-              Hệ thống quản lý học phí
+              Hệ thống Quản lý Trung tâm
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="hidden md:flex bg-indigo-950 p-1 rounded-lg">
+
+        {/* Navigation */}
+        <nav className="hidden md:flex bg-indigo-950 p-1 rounded-xl gap-0.5">
+          {visibleNavItems.map(item => (
             <button
-              onClick={() => setActiveTab('nhap-lieu')}
-              className={`flex items-center gap-2 px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${activeTab === 'nhap-lieu' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-300 hover:text-white hover:bg-indigo-800'}`}
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors ${
+                activeTab === item.id
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-indigo-300 hover:text-white hover:bg-indigo-800'
+              }`}
             >
-              <Database className="w-4 h-4" />
-              Nhập liệu
+              {item.icon}
+              {item.label}
             </button>
-            {user.role === 'admin' && (
-              <>
-                <button
-                  onClick={() => setActiveTab('bao-cao')}
-                  className={`flex items-center gap-2 px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${activeTab === 'bao-cao' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-300 hover:text-white hover:bg-indigo-800'}`}
-                >
-                  <BarChart3 className="w-4 h-4" />
-                  Báo cáo
-                </button>
-                <button
-                  onClick={() => setActiveTab('quan-ly-user')}
-                  className={`flex items-center gap-2 px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${activeTab === 'quan-ly-user' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-300 hover:text-white hover:bg-indigo-800'}`}
-                >
-                  <Users className="w-4 h-4" />
-                  Quản lý User
-                </button>
-              </>
-            )}
-          </div>
+          ))}
+        </nav>
+
+        {/* User info + logout */}
+        <div className="flex items-center gap-4">
           <div className="hidden sm:block text-right">
             <p className="text-sm font-medium">{user.name}</p>
             <p className="text-[10px] text-indigo-300 uppercase tracking-tighter">
-              {user.username === 'admin' ? 'Quản trị viên hệ thống' : user.role === 'admin' ? 'Kế toán trưởng • Admin' : 'Nhân viên tài vụ • Phòng 102'}
+              {user.role === 'admin' ? 'Quản trị viên' : 'Nhân viên'}
             </p>
           </div>
           <button 
@@ -204,7 +255,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content Dashboard */}
+      {/* Main Content */}
       <main className="flex-1 w-full max-w-screen-2xl mx-auto px-4 sm:px-8 py-8 overflow-auto">
         {isDataLoading ? (
           <div className="h-full flex items-center justify-center">
@@ -213,9 +264,8 @@ export default function App() {
               <p className="text-xs text-slate-500 font-medium">Đang đồng bộ dữ liệu đám mây...</p>
             </div>
           </div>
-        ) : activeTab === 'nhap-lieu' ? (
+        ) : activeTab === 'thu-tien' ? (
           <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] xl:grid-cols-[450px_1fr] gap-8 h-full">
-            
             {/* Left Column: Form */}
             <div className="flex flex-col gap-6">
               <TransactionForm onSubmit={handleAddTransaction} students={students} />
@@ -236,32 +286,61 @@ export default function App() {
 
             {/* Right Column: Table */}
             <div className="flex flex-col min-h-[600px] pb-8">
-               <TransactionTable 
-                 transactions={transactions}
-                 onToggleReconciled={handleToggleReconciled}
-                 onToggleInvoiced={handleToggleInvoiced}
-                 onDeleteTransaction={handleDeleteTransaction}
-                 onGenerateReport={() => setShowReportModal(true)}
-                 userRole={user.role}
-               />
+              <TransactionTable 
+                transactions={transactions}
+                onToggleReconciled={handleToggleReconciled}
+                onToggleInvoiced={handleToggleInvoiced}
+                onDeleteTransaction={handleDeleteTransaction}
+                onGenerateReport={() => setShowReportModal(true)}
+                userRole={user.role}
+              />
             </div>
-
           </div>
+
+        ) : activeTab === 'quan-ly-lop' ? (
+          <ClassManagement students={students} />
+
+        ) : activeTab === 'diem-danh' ? (
+          <AttendanceManagement students={students} classes={classes} />
+
+        ) : activeTab === 'hoc-phi' ? (
+          <TuitionManagement students={students} transactions={transactions} />
+
+        ) : activeTab === 'bao-cao' ? (
+          <div className="h-full">
+            <ReportsDashboard transactions={transactions} students={students} />
+          </div>
+
         ) : activeTab === 'quan-ly-user' ? (
           <div className="h-full">
             <UserManagement currentUserUsername={user.username} />
           </div>
-        ) : (
-          <div className="h-full">
-            <ReportsDashboard transactions={transactions} />
-          </div>
-        )}
+
+        ) : null}
       </main>
 
       {showReportModal && (
         <DailyReportModal 
           transactions={transactions}
           onClose={() => setShowReportModal(false)}
+        />
+      )}
+
+      {showStudentModal && pendingTransaction && (
+        <StudentRegisterModal 
+          studentName={pendingTransaction.studentName}
+          className={pendingTransaction.className}
+          onSave={handleSaveNewStudent}
+          onClose={() => {
+            if (confirm('Bạn có muốn tiếp tục lưu khoản thu này mà không lưu thông tin chi tiết học viên không?')) {
+              submitTransaction(pendingTransaction);
+              setShowStudentModal(false);
+              setPendingTransaction(null);
+            } else {
+              setShowStudentModal(false);
+              setPendingTransaction(null);
+            }
+          }}
         />
       )}
     </div>

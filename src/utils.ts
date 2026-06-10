@@ -118,5 +118,63 @@ export const api = {
   },
   async getStudents(): Promise<any[]> {
     return request('/api/students');
-  }
+  },
+  async createStudent(student: any): Promise<any> {
+    return request('/api/students', {
+      method: 'POST',
+      body: JSON.stringify(student),
+    });
+  },
+  async updateStudent(id: string, student: any): Promise<any> {
+    return request(`/api/students/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(student),
+    });
+  },
+  async deleteStudent(id: string): Promise<any> {
+    return request(`/api/students/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  // Classes
+  async getClasses(): Promise<any[]> {
+    return request('/api/classes');
+  },
+  async createClass(cls: any): Promise<any> {
+    return request('/api/classes', {
+      method: 'POST',
+      body: JSON.stringify(cls),
+    });
+  },
+  async updateClass(id: string, cls: any): Promise<any> {
+    return request(`/api/classes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(cls),
+    });
+  },
+  async deleteClass(id: string): Promise<any> {
+    return request(`/api/classes/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  // Attendance
+  async getAttendance(filters?: { date?: string; classId?: string; studentId?: string }): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (filters?.date) params.set('date', filters.date);
+    if (filters?.classId) params.set('classId', filters.classId);
+    if (filters?.studentId) params.set('studentId', filters.studentId);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return request(`/api/attendance${query}`);
+  },
+  async saveAttendanceBatch(records: any[]): Promise<any[]> {
+    return request('/api/attendance/batch', {
+      method: 'POST',
+      body: JSON.stringify({ records }),
+    });
+  },
+  async deleteAttendance(id: string): Promise<any> {
+    return request(`/api/attendance/${id}`, {
+      method: 'DELETE',
+    });
+  },
 };
