@@ -1,0 +1,23 @@
+[
+  {
+    "id": "1",
+    "username": "ketoan",
+    "password": "password123",
+    "name": "Nguyễn Kế Toán",
+    "role": "admin"
+  },
+  {
+    "id": "2",
+    "username": "nvvp",
+    "password": "password123",
+    "name": "Nguyễn Minh Anh",
+    "role": "staff"
+  },
+  {
+    "id": "3",
+    "username": "admin",
+    "password": "password123",
+    "name": "Quản Trị Viên",
+    "role": "admin"
+  }
+]

@@ -1,0 +1,17 @@
+[
+  {
+    "paymentDate": "2026-06-10",
+    "studentName": "Bùi Quốc Đại",
+    "className": "Kindy 5",
+    "term": "Tháng 06/2026",
+    "amount": 2100000,
+    "paymentMethod": "Tiền mặt",
+    "revenueCategory": "Học phí offline",
+    "senderName": "",
+    "notes": "",
+    "id": "pll4xmn",
+    "createdAt": "2026-06-10T03:39:20.005Z",
+    "isReconciled": true,
+    "isInvoiced": true
+  }
+]
