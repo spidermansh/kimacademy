@@ -6,17 +6,18 @@ interface StudentRegisterModalProps {
   className: string;
   onSave: (studentData: any) => void;
   onClose: () => void;
+  classes?: { id: string; name: string; type: string }[];
 }
 
 export default function StudentRegisterModal({
   studentName,
   className: initialClassName,
   onSave,
-  onClose
+  onClose,
+  classes = [],
 }: StudentRegisterModalProps) {
   const [fullName, setFullName] = useState(studentName);
   
-  // Heuristic to extract Vietnamese Name: take the last 2 words
   const extractVietnameseName = (name: string): string => {
     const clean = name.trim();
     if (!clean) return '';
@@ -29,10 +30,10 @@ export default function StudentRegisterModal({
   const [englishName, setEnglishName] = useState('');
   const [className, setClassName] = useState(initialClassName);
   const [gender, setGender] = useState('Nam');
-  const [birthYear, setBirthYear] = useState(new Date().getFullYear() - 10); // Default to ~10 years ago
+  const [birthYear, setBirthYear] = useState(new Date().getFullYear() - 10);
   const [parentPhone, setParentPhone] = useState('');
+  const [feePerSession, setFeePerSession] = useState('');
 
-  // Update Vietnamese name automatically when full name changes (if not customized manually)
   const [isVietNameManual, setIsVietNameManual] = useState(false);
   useEffect(() => {
     if (!isVietNameManual) {
@@ -40,10 +41,14 @@ export default function StudentRegisterModal({
     }
   }, [fullName, isVietNameManual]);
 
-  // Compute Viet Anh name in real-time
   const vietAnhName = englishName.trim()
     ? `${vietnameseName.trim()} - ${englishName.trim()}`
     : vietnameseName.trim();
+
+  const handleFeeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, '');
+    setFeePerSession(raw ? new Intl.NumberFormat('en-US').format(parseInt(raw, 10)) : '');
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +57,8 @@ export default function StudentRegisterModal({
       return;
     }
     
+    const feeNumeric = parseInt(feePerSession.replace(/\D/g, '') || '0', 10);
+
     onSave({
       name: fullName.trim(),
       vietnameseName: vietnameseName.trim(),
@@ -60,7 +67,8 @@ export default function StudentRegisterModal({
       className: className.trim(),
       gender,
       birthYear: Number(birthYear),
-      parentPhone: parentPhone.trim()
+      parentPhone: parentPhone.trim(),
+      feePerSession: feeNumeric,
     });
   };
 
@@ -83,7 +91,7 @@ export default function StudentRegisterModal({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-4">
             {/* Họ và tên */}
             <div className="col-span-2">
@@ -142,18 +150,33 @@ export default function StudentRegisterModal({
               </div>
             </div>
 
-            {/* Lớp học */}
+            {/* Lớp học — dropdown */}
             <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">
                 Lớp học
               </label>
-              <input
-                type="text"
-                value={className}
-                onChange={(e) => setClassName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
-                placeholder="VD: IELTS 7.0"
-              />
+              {classes.length > 0 ? (
+                <select
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm bg-white"
+                >
+                  <option value="">-- Chọn lớp --</option>
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.name}>
+                      {cls.name} ({cls.type === 'offline' ? 'Offline' : 'Online'})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+                  placeholder="VD: IELTS 7.0"
+                />
+              )}
             </div>
 
             {/* Giới tính */}
@@ -199,6 +222,28 @@ export default function StudentRegisterModal({
                 className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm font-mono"
                 placeholder="VD: 0912345678"
               />
+            </div>
+
+            {/* Học phí mỗi buổi — MỚI */}
+            <div className="col-span-2">
+              <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest block mb-1.5">
+                Học phí / buổi học (VNĐ)
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={feePerSession}
+                  onChange={handleFeeChange}
+                  className="w-full px-3 py-2 border-2 border-indigo-200 bg-indigo-50 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm font-mono text-right font-semibold text-indigo-800"
+                  placeholder="VD: 87,500"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-indigo-400 font-medium pointer-events-none">đ/buổi</span>
+              </div>
+              {feePerSession && (
+                <p className="text-xs text-indigo-500 mt-1 text-right">
+                  = {parseInt(feePerSession.replace(/\D/g, '') || '0', 10).toLocaleString('vi-VN')} đ mỗi buổi học
+                </p>
+              )}
             </div>
           </div>
 

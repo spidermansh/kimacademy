@@ -5,9 +5,10 @@ import { CheckCircle2 } from 'lucide-react';
 interface TransactionFormProps {
   onSubmit: (data: any) => void;
   students?: { id: string; name: string; className: string }[];
+  classes?: { id: string; name: string; type: string }[];
 }
 
-export default function TransactionForm({ onSubmit, students = [] }: TransactionFormProps) {
+export default function TransactionForm({ onSubmit, students = [], classes = [] }: TransactionFormProps) {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [studentName, setStudentName] = useState('');
   const [className, setClassName] = useState('');
@@ -24,7 +25,6 @@ export default function TransactionForm({ onSubmit, students = [] }: Transaction
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Chuyển khoản');
   const [senderName, setSenderName] = useState('');
   const [notes, setNotes] = useState('');
-
   const [showSuccess, setShowSuccess] = useState(false);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,6 +106,7 @@ export default function TransactionForm({ onSubmit, students = [] }: Transaction
               onChange={(e) => {
                 const val = e.target.value;
                 setStudentName(val);
+                // Auto-fill class when matching student found
                 const matched = students.find(s => s.name.toLowerCase() === val.toLowerCase().trim());
                 if (matched && matched.className) {
                   setClassName(matched.className);
@@ -120,15 +121,31 @@ export default function TransactionForm({ onSubmit, students = [] }: Transaction
             </datalist>
           </div>
 
+          {/* Lớp học — dropdown from classes data */}
           <div>
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Lớp học</label>
-            <input
-              type="text"
-              placeholder="VD: IELTS 6.5"
-              value={className}
-              onChange={(e) => setClassName(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
-            />
+            {classes.length > 0 ? (
+              <select
+                value={className}
+                onChange={(e) => setClassName(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm text-slate-700 bg-white"
+              >
+                <option value="">-- Chọn lớp --</option>
+                {classes.map((cls) => (
+                  <option key={cls.id} value={cls.name}>
+                    {cls.name} ({cls.type === 'offline' ? 'Offline' : 'Online'})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                placeholder="VD: IELTS 6.5 (chưa có lớp nào)"
+                value={className}
+                onChange={(e) => setClassName(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+              />
+            )}
           </div>
 
           <div>

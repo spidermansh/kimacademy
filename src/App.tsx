@@ -8,12 +8,13 @@ import StudentRegisterModal from './components/StudentRegisterModal';
 import ClassManagement from './components/ClassManagement';
 import AttendanceManagement from './components/AttendanceManagement';
 import TuitionManagement from './components/TuitionManagement';
+import StudentManagement from './components/StudentManagement';
 import Login from './components/Login';
 import { Transaction } from './types';
 import { api, auth } from './utils';
 import { Check, BarChart3, LogOut, Users, BookOpen, CalendarDays, Wallet, DollarSign } from 'lucide-react';
 
-type TabId = 'thu-tien' | 'quan-ly-lop' | 'diem-danh' | 'hoc-phi' | 'bao-cao' | 'quan-ly-user';
+type TabId = 'thu-tien' | 'quan-ly-hoc-vien' | 'quan-ly-lop' | 'diem-danh' | 'hoc-phi' | 'bao-cao' | 'quan-ly-user';
 
 interface NavItem {
   id: TabId;
@@ -23,12 +24,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'thu-tien',      label: 'Thu tiền',    icon: <DollarSign className="w-4 h-4" /> },
-  { id: 'quan-ly-lop',   label: 'Lớp học',     icon: <BookOpen className="w-4 h-4" /> },
-  { id: 'diem-danh',     label: 'Điểm danh',   icon: <CalendarDays className="w-4 h-4" /> },
-  { id: 'hoc-phi',       label: 'Học phí',      icon: <Wallet className="w-4 h-4" /> },
-  { id: 'bao-cao',       label: 'Báo cáo',     icon: <BarChart3 className="w-4 h-4" />, adminOnly: true },
-  { id: 'quan-ly-user',  label: 'Người dùng',  icon: <Users className="w-4 h-4" />, adminOnly: true },
+  { id: 'thu-tien',          label: 'Thu tiền',    icon: <DollarSign className="w-4 h-4" /> },
+  { id: 'quan-ly-hoc-vien',  label: 'Học viên',    icon: <Users className="w-4 h-4" /> },
+  { id: 'quan-ly-lop',       label: 'Lớp học',     icon: <BookOpen className="w-4 h-4" /> },
+  { id: 'diem-danh',         label: 'Điểm danh',   icon: <CalendarDays className="w-4 h-4" /> },
+  { id: 'hoc-phi',           label: 'Học phí',      icon: <Wallet className="w-4 h-4" /> },
+  { id: 'bao-cao',           label: 'Báo cáo',     icon: <BarChart3 className="w-4 h-4" />, adminOnly: true },
+  { id: 'quan-ly-user',      label: 'Người dùng',  icon: <Users className="w-4 h-4" />, adminOnly: true },
 ];
 
 export default function App() {
@@ -268,7 +270,7 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] xl:grid-cols-[450px_1fr] gap-8 h-full">
             {/* Left Column: Form */}
             <div className="flex flex-col gap-6">
-              <TransactionForm onSubmit={handleAddTransaction} students={students} />
+              <TransactionForm onSubmit={handleAddTransaction} students={students} classes={classes} />
               
               <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 text-sm text-indigo-800">
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
@@ -296,6 +298,12 @@ export default function App() {
               />
             </div>
           </div>
+
+        ) : activeTab === 'quan-ly-hoc-vien' ? (
+          <StudentManagement
+            classes={classes}
+            onStudentsUpdated={(updated) => setStudents(updated)}
+          />
 
         ) : activeTab === 'quan-ly-lop' ? (
           <ClassManagement students={students} />
@@ -330,6 +338,7 @@ export default function App() {
         <StudentRegisterModal 
           studentName={pendingTransaction.studentName}
           className={pendingTransaction.className}
+          classes={classes}
           onSave={handleSaveNewStudent}
           onClose={() => {
             if (confirm('Bạn có muốn tiếp tục lưu khoản thu này mà không lưu thông tin chi tiết học viên không?')) {
