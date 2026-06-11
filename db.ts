@@ -59,7 +59,15 @@ class DatabaseService {
     const mongoUri = process.env.MONGODB_URI;
     if (mongoUri) {
       this.isCloud = true;
-      this.mongoClient = new MongoClient(mongoUri);
+      // Add TLS options for cloud hosting compatibility (Render, Railway, etc.)
+      this.mongoClient = new MongoClient(mongoUri, {
+        tls: true,
+        serverSelectionTimeoutMS: 15000,
+        connectTimeoutMS: 15000,
+        socketTimeoutMS: 45000,
+        retryWrites: true,
+        retryReads: true,
+      });
       const match = mongoUri.match(/\/([^/?]+)(\?|$)/);
       if (match && match[1]) {
         this.dbName = match[1];
@@ -71,6 +79,7 @@ class DatabaseService {
     if (this.isCloud && this.mongoClient) {
       try {
         console.log('🔌 Connecting to MongoDB Atlas cloud database...');
+        console.log(`   Database: ${this.dbName}`);
         await this.mongoClient.connect();
         console.log('✅ Connected to MongoDB Atlas successfully.');
         
