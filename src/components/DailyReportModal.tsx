@@ -10,6 +10,17 @@ interface DailyReportModalProps {
 
 export default function DailyReportModal({ transactions, onClose }: DailyReportModalProps) {
   const [copied, setCopied] = React.useState(false);
+  
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const today = new Date().toISOString().split('T')[0];
   
   const todaysTransactions = transactions

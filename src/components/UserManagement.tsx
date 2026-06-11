@@ -17,7 +17,7 @@ export default function UserManagement({ currentUserUsername }: UserManagementPr
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'admin' | 'staff'>('staff');
+  const [role, setRole] = useState<'admin' | 'staff' | 'teacher'>('staff');
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -198,10 +198,11 @@ export default function UserManagement({ currentUserUsername }: UserManagementPr
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Vai trò hệ thống</label>
                 <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as 'admin' | 'staff')}
+                  onChange={(e) => setRole(e.target.value as 'admin' | 'staff' | 'teacher')}
                   className="w-full px-3 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white text-slate-700 font-medium"
                 >
                   <option value="staff">Nhân viên văn phòng (Staff)</option>
+                  <option value="teacher">Giáo viên (Teacher)</option>
                   <option value="admin">Kế toán / Quản trị viên (Admin)</option>
                 </select>
               </div>
@@ -262,9 +263,11 @@ export default function UserManagement({ currentUserUsername }: UserManagementPr
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                           u.role === 'admin' 
                             ? 'bg-purple-100 text-purple-700 border border-purple-200' 
+                            : u.role === 'teacher'
+                            ? 'bg-teal-100 text-teal-700 border border-teal-200'
                             : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                         }`}>
-                          {u.role === 'admin' ? 'Admin' : 'Staff'}
+                          {u.role === 'admin' ? 'Admin' : u.role === 'teacher' ? 'Teacher' : 'Staff'}
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">

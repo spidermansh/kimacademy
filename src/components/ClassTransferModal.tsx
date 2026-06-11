@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Calculator, BookOpen, AlertTriangle } from 'lucide-react';
 import { api } from '../utils';
+import { useToast } from './Toast';
 
 interface ClassTransferModalProps {
   student: any;
@@ -24,6 +25,7 @@ export default function ClassTransferModal({
   const [saving, setSaving]                     = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
   const [enrollmentHistory, setEnrollmentHistory] = useState<any[]>([]);
+  const toast = useToast();
 
   // Load attendance + enrollment history for this student
   useEffect(() => {
@@ -40,6 +42,16 @@ export default function ClassTransferModal({
       setEnrollmentHistory(enr);
     }).catch(() => {});
   }, [student.id, student.name]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   // ── Tính tiền đã dùng theo từng giai đoạn enrollment ──────────────────────
   const totalPaidOffline = transactions
@@ -93,10 +105,10 @@ export default function ClassTransferModal({
   };
 
   const handleConfirm = async () => {
-    if (!newClassName) { alert('Vui lòng chọn lớp mới!'); return; }
-    if (!transferDate)  { alert('Vui lòng chọn ngày chuyển lớp!'); return; }
+    if (!newClassName) { toast.warning('Thiếu thông tin', 'Vui lòng chọn lớp mới!'); return; }
+    if (!transferDate)  { toast.warning('Thiếu thông tin', 'Vui lòng chọn ngày chuyển lớp!'); return; }
     if (newClassName === student.className) {
-      alert('Lớp mới phải khác lớp hiện tại!'); return;
+      toast.warning('Lớp không hợp lệ', 'Lớp mới phải khác lớp hiện tại!'); return;
     }
     setSaving(true);
     try {
@@ -109,8 +121,9 @@ export default function ClassTransferModal({
         transferNote,
       });
       onConfirm(result.student || { ...student, className: newClassName, feePerSession: newFee });
+      toast.success('Đã chuyển lớp thành công!', `${student.name} → ${newClassName}`);
     } catch (err: any) {
-      alert('Lỗi chuyển lớp: ' + err.message);
+      toast.error('Lỗi chuyển lớp', err.message);
     } finally {
       setSaving(false);
     }
@@ -125,7 +138,13 @@ export default function ClassTransferModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleConfirm();
+        }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-indigo-900 to-indigo-700 rounded-t-2xl">
           <div>
@@ -304,15 +323,15 @@ export default function ClassTransferModal({
             Hủy
           </button>
           <button
-            onClick={handleConfirm}
+            type="submit"
             disabled={saving || !newClassName || !transferDate}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors cursor-pointer"
           >
             <ArrowRight className="w-4 h-4" />
             {saving ? 'Đang xử lý...' : `Xác nhận chuyển sang ${newClassName || '...'}`}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }

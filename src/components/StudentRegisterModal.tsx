@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useToast } from './Toast';
 
 interface StudentRegisterModalProps {
   studentName: string;
@@ -16,6 +17,7 @@ export default function StudentRegisterModal({
   onClose,
   classes = [],
 }: StudentRegisterModalProps) {
+  const toast = useToast();
   const [fullName, setFullName] = useState(studentName);
   
   const extractVietnameseName = (name: string): string => {
@@ -41,6 +43,16 @@ export default function StudentRegisterModal({
     }
   }, [fullName, isVietNameManual]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const vietAnhName = englishName.trim()
     ? `${vietnameseName.trim()} - ${englishName.trim()}`
     : vietnameseName.trim();
@@ -53,7 +65,7 @@ export default function StudentRegisterModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName.trim() || !vietnameseName.trim()) {
-      alert('Vui lòng điền Họ và tên và Tên tiếng Việt.');
+      toast.warning('Thiếu thông tin', 'Vui lòng điền Họ và tên và Tên tiếng Việt.');
       return;
     }
     
