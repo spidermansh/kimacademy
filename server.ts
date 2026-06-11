@@ -818,6 +818,79 @@ app.delete('/api/staff/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── Expense Management (Quản lý Chi phí) ──────────────────────────────────
+app.get('/api/expenses', authenticateToken, async (req, res) => {
+  try {
+    const query: any = {};
+    if (req.query.month) query.month = req.query.month as string;
+    if (req.query.category) query.category = req.query.category as string;
+    const expenses = await db.getExpenses(query);
+    res.json(expenses);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/expenses', authenticateToken, async (req, res) => {
+  try {
+    const now = new Date().toISOString();
+    const expense = {
+      id: `exp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      ...req.body,
+      createdBy: req.user?.name || 'unknown',
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await db.createExpense(expense);
+    await db.addAuditLog({
+      action: 'CREATE',
+      entity: 'expense',
+      entityId: expense.id,
+      details: `Thêm khoản chi: ${expense.category} - ${expense.description} (${expense.amount?.toLocaleString()}đ)`,
+      user: req.user?.name || 'unknown',
+    });
+    res.status(201).json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.put('/api/expenses/:id', authenticateToken, async (req, res) => {
+  try {
+    const result = await db.updateExpense(req.params.id, req.body);
+    await db.addAuditLog({
+      action: 'UPDATE',
+      entity: 'expense',
+      entityId: req.params.id,
+      details: `Sửa khoản chi ID: ${req.params.id}`,
+      user: req.user?.name || 'unknown',
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ message: 'Chỉ admin mới có thể xóa khoản chi' });
+  }
+  try {
+    const success = await db.deleteExpense(req.params.id);
+    if (!success) return res.status(404).json({ message: 'Không tìm thấy khoản chi' });
+    await db.addAuditLog({
+      action: 'DELETE',
+      entity: 'expense',
+      entityId: req.params.id,
+      details: `Xóa khoản chi ID: ${req.params.id}`,
+      user: req.user?.name || 'unknown',
+    });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // ─── Teaching Logs (Chấm công GV) ──────────────────────────────────────────
 app.get('/api/teaching-logs', authenticateToken, async (req, res) => {
   try {

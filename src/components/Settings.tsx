@@ -7,7 +7,7 @@ import {
   CreditCard, Tag, Edit2, Check, X, Settings as SettingsIcon,
   RotateCcw, Download, Upload, Shield, Clock, Search,
   HardDrive, RefreshCw, FileJson, AlertTriangle, User,
-  Database, ChevronDown, ChevronRight,
+  Database, ChevronDown, ChevronRight, Receipt,
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   address: '',
   feeTypes: ['Học phí offline', 'Học phí online', 'Sách', 'Đồng phục', 'Lệ phí thi', 'Thu khác'],
   paymentMethods: ['Chuyển khoản', 'Tiền mặt', 'Momo', 'ZaloPay', 'Khác'],
+  expenseCategories: ['Mặt bằng', 'Điện nước', 'Internet', 'Dụng cụ học tập', 'Marketing/Quảng cáo', 'Bảo trì/Sửa chữa', 'Đối ngoại', 'Văn phòng phẩm', 'Quỹ hoạt động', 'Chi khác'],
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -65,6 +66,12 @@ export default function Settings({ onSettingsUpdated }: SettingsProps) {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const restoreInputRef = useRef<HTMLInputElement>(null);
 
+  // Danh mục — loại khoản chi
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
+  const [newExpenseCat, setNewExpenseCat] = useState('');
+  const [editingExpIdx, setEditingExpIdx] = useState<number | null>(null);
+  const [editingExpVal, setEditingExpVal] = useState('');
+
   // Backup states
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
@@ -85,10 +92,12 @@ export default function Settings({ onSettingsUpdated }: SettingsProps) {
         setForm(data);
         setFeeTypes(data.feeTypes || DEFAULT_SETTINGS.feeTypes);
         setPaymentMethods(data.paymentMethods || DEFAULT_SETTINGS.paymentMethods);
+        setExpenseCategories(data.expenseCategories || DEFAULT_SETTINGS.expenseCategories);
       } catch (err) {
         toast.error('Không thể tải cài đặt', 'Sử dụng cài đặt mặc định');
         setFeeTypes(DEFAULT_SETTINGS.feeTypes);
         setPaymentMethods(DEFAULT_SETTINGS.paymentMethods);
+        setExpenseCategories(DEFAULT_SETTINGS.expenseCategories);
       } finally {
         setLoading(false);
       }
@@ -141,6 +150,7 @@ export default function Settings({ onSettingsUpdated }: SettingsProps) {
         address: form.address,
         feeTypes,
         paymentMethods,
+        expenseCategories,
       });
       setSettings(updated);
       onSettingsUpdated?.(updated);
@@ -163,6 +173,7 @@ export default function Settings({ onSettingsUpdated }: SettingsProps) {
         address: settings.address,
         feeTypes,
         paymentMethods,
+        expenseCategories,
       });
       setSettings(updated);
       onSettingsUpdated?.(updated);
@@ -262,6 +273,7 @@ export default function Settings({ onSettingsUpdated }: SettingsProps) {
     if (ok) {
       setFeeTypes(DEFAULT_SETTINGS.feeTypes);
       setPaymentMethods(DEFAULT_SETTINGS.paymentMethods);
+      setExpenseCategories(DEFAULT_SETTINGS.expenseCategories);
       toast.info('Đã khôi phục danh mục mặc định. Nhớ bấm Lưu để áp dụng.');
     }
   };
@@ -731,6 +743,138 @@ export default function Settings({ onSettingsUpdated }: SettingsProps) {
                     <p className="text-center text-sm text-slate-400 py-4">Chưa có hình thức thanh toán nào</p>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Loại khoản chi */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-red-500" />
+              <div>
+                <h3 className="font-semibold text-slate-700 text-sm">Loại khoản chi</h3>
+                <p className="text-[10px] text-slate-400">{expenseCategories.length} loại đã cấu hình</p>
+              </div>
+            </div>
+
+            <div className="p-4 space-y-2">
+              {/* Thêm mới */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newExpenseCat}
+                  onChange={(e) => setNewExpenseCat(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const val = newExpenseCat.trim();
+                      if (!val) return;
+                      if (expenseCategories.includes(val)) {
+                        toast.warning('Trùng tên', 'Loại khoản chi này đã tồn tại');
+                        return;
+                      }
+                      setExpenseCategories(prev => [...prev, val]);
+                      setNewExpenseCat('');
+                    }
+                  }}
+                  placeholder="Tên loại chi mới..."
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none text-sm transition-all"
+                />
+                <button
+                  onClick={() => {
+                    const val = newExpenseCat.trim();
+                    if (!val) return;
+                    if (expenseCategories.includes(val)) {
+                      toast.warning('Trùng tên', 'Loại khoản chi này đã tồn tại');
+                      return;
+                    }
+                    setExpenseCategories(prev => [...prev, val]);
+                    setNewExpenseCat('');
+                  }}
+                  disabled={!newExpenseCat.trim()}
+                  className="flex items-center gap-1 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Thêm
+                </button>
+              </div>
+
+              {/* Danh sách */}
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {expenseCategories.map((ec, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 group"
+                  >
+                    {editingExpIdx === idx ? (
+                      <>
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editingExpVal}
+                          onChange={(e) => setEditingExpVal(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const val = editingExpVal.trim();
+                              if (!val || editingExpIdx === null) return;
+                              if (expenseCategories.some((c, i) => c === val && i !== editingExpIdx)) {
+                                toast.warning('Trùng tên', 'Loại khoản chi này đã tồn tại');
+                                return;
+                              }
+                              setExpenseCategories(prev => prev.map((c, i) => (i === editingExpIdx ? val : c)));
+                              setEditingExpIdx(null);
+                              setEditingExpVal('');
+                            }
+                            if (e.key === 'Escape') { setEditingExpIdx(null); setEditingExpVal(''); }
+                          }}
+                          className="flex-1 px-2 py-0.5 border border-red-400 rounded text-sm outline-none bg-white"
+                        />
+                        <button onClick={() => {
+                          const val = editingExpVal.trim();
+                          if (!val || editingExpIdx === null) return;
+                          setExpenseCategories(prev => prev.map((c, i) => (i === editingExpIdx ? val : c)));
+                          setEditingExpIdx(null);
+                          setEditingExpVal('');
+                        }} className="text-emerald-600 hover:text-emerald-700 cursor-pointer">
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => { setEditingExpIdx(null); setEditingExpVal(''); }} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm text-slate-700">{ec}</span>
+                        <div className="hidden group-hover:flex items-center gap-1">
+                          <button
+                            onClick={() => { setEditingExpIdx(idx); setEditingExpVal(ec); }}
+                            className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer"
+                            title="Sửa"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const ok = await toast.confirm({
+                                title: `Xóa "${ec}"?`,
+                                message: 'Các khoản chi cũ có thể bị ảnh hưởng.',
+                                confirmText: 'Xóa',
+                                danger: true,
+                              });
+                              if (ok) setExpenseCategories(prev => prev.filter((_, i) => i !== idx));
+                            }}
+                            className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors cursor-pointer"
+                            title="Xóa"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {expenseCategories.length === 0 && (
+                  <p className="text-center text-sm text-slate-400 py-4">Chưa có loại khoản chi nào</p>
+                )}
               </div>
             </div>
           </div>

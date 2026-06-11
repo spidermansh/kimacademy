@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Transaction, Student } from '../types';
+import { Transaction, Student, Expense } from '../types';
 import { api, formatCurrency, formatDate } from '../utils';
 import {
   Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -21,6 +21,7 @@ type ReportTabKey = 'dashboard' | 'hoc-vien' | 'lop' | 'tai-chinh' | 'pnl' | 'co
 interface Props {
   transactions: Transaction[];
   students: Student[];
+  expenses?: Expense[];
   initialTab?: ReportTabKey;
 }
 
@@ -67,7 +68,7 @@ function StatCard({ label, value, sub, color = 'indigo', icon }: {
   );
 }
 
-export default function ReportsDashboard({ transactions, students = [], initialTab }: Props) {
+export default function ReportsDashboard({ transactions, students = [], expenses = [], initialTab }: Props) {
   const [activeTab, setActiveTab] = useState<ReportTabKey>(initialTab || 'dashboard');
 
   // Sync with sidebar navigation
@@ -1322,25 +1323,34 @@ export default function ReportsDashboard({ transactions, students = [], initialT
               const salaryCost = allSalaryData
                 .filter(s => s.month === key)
                 .reduce((sum, s) => sum + (s.grossSalary || 0), 0);
-              const profit = revenue - salaryCost;
+              const otherExpenses = expenses
+                .filter(e => e.date?.startsWith(key))
+                .reduce((sum, e) => sum + e.amount, 0);
+              const totalCost = salaryCost + otherExpenses;
+              const profit = revenue - totalCost;
               const margin = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
               return {
                 month: `T${d.getMonth() + 1}/${d.getFullYear()}`,
                 revenue,
                 salaryCost,
+                otherExpenses,
+                totalCost,
                 profit,
                 margin,
               };
             });
             const currentProfit = monthlyData[monthlyData.length - 1]?.profit || 0;
             const currentRevenue = monthlyData[monthlyData.length - 1]?.revenue || 0;
-            const currentCost = monthlyData[monthlyData.length - 1]?.salaryCost || 0;
+            const currentSalaryCost = monthlyData[monthlyData.length - 1]?.salaryCost || 0;
+            const currentOtherExp = monthlyData[monthlyData.length - 1]?.otherExpenses || 0;
+            const currentTotalCost = currentSalaryCost + currentOtherExp;
 
             return (
               <>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                   <StatCard label="Doanh thu tháng" value={formatCurrency(currentRevenue)} color="emerald" icon={<DollarSign className="w-8 h-8" />} />
-                  <StatCard label="Chi phí lương" value={formatCurrency(currentCost)} color="red" icon={<Users className="w-8 h-8" />} />
+                  <StatCard label="Chi phí lương" value={formatCurrency(currentSalaryCost)} color="red" icon={<Users className="w-8 h-8" />} />
+                  <StatCard label="Chi phí khác" value={formatCurrency(currentOtherExp)} sub={`${currentTotalCost > 0 ? Math.round((currentOtherExp / currentTotalCost) * 100) : 0}% tổng chi`} color="amber" icon={<Wallet className="w-8 h-8" />} />
                   <StatCard label="Lợi nhuận" value={formatCurrency(currentProfit)} color={currentProfit >= 0 ? 'emerald' : 'red'} icon={<TrendingUp className="w-8 h-8" />} />
                   <StatCard
                     label="Biên lợi nhuận"
@@ -1359,7 +1369,8 @@ export default function ReportsDashboard({ transactions, students = [], initialT
                       <Tooltip content={<CustomTooltip />} />
                       <Legend />
                       <Bar dataKey="revenue" name="Doanh thu" fill="#10b981" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="salaryCost" name="Chi phí lương" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="salaryCost" name="Chi phí lương" stackId="cost" fill="#ef4444" radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="otherExpenses" name="Chi phí khác" stackId="cost" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="profit" name="Lợi nhuận" fill="#6366f1" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>

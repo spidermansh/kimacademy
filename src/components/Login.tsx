@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Lock, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 
 interface LoginProps {
@@ -10,6 +10,17 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
+
+  // Fetch logo from settings (public endpoint, no auth needed)
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.logoUrl) setLogoUrl(data.logoUrl);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,14 +71,22 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         
         {/* Logo / Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white text-indigo-950 rounded-2xl shadow-xl shadow-indigo-900/40 mb-4 border border-indigo-100/20">
-            <span className="font-extrabold text-3xl tracking-tighter">KA</span>
-          </div>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt="Kim Academy Logo"
+              className="w-20 h-20 object-contain mx-auto mb-4 rounded-2xl shadow-xl shadow-indigo-900/40 border border-indigo-100/20 bg-white p-1"
+            />
+          ) : (
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-white text-indigo-950 rounded-2xl shadow-xl shadow-indigo-900/40 mb-4 border border-indigo-100/20">
+              <span className="font-extrabold text-3xl tracking-tighter">KA</span>
+            </div>
+          )}
           <h1 className="text-2xl font-black text-white uppercase tracking-wider">
             Kim Academy
           </h1>
           <p className="text-xs text-indigo-300 uppercase tracking-widest mt-1">
-            Hệ thống quản lý học phí
+            Hệ thống Quản lý Trung tâm
           </p>
         </div>
 
@@ -166,10 +185,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-slate-600 text-[10px] uppercase tracking-wider mt-6">
-          Phòng máy tài chính • Kim Academy © 2026
-        </p>
+        {/* Footer — Credit & Version */}
+        <div className="text-center mt-6 space-y-1">
+          <p className="text-slate-500 text-[10px]">
+            Phát triển bởi: <span className="text-slate-400">Bùi Trần Sơn Hải</span> & <span className="text-slate-400">Antigravity</span>
+          </p>
+          <p className="text-slate-600 text-[10px]">
+            Ver: 1.1 · Kim Academy © 2026
+          </p>
+        </div>
         
       </div>
     </div>

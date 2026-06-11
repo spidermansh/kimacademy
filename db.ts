@@ -42,6 +42,18 @@ const DEFAULT_SETTINGS = {
     'ZaloPay',
     'Khác',
   ],
+  expenseCategories: [
+    'Mặt bằng',
+    'Điện nước',
+    'Internet',
+    'Dụng cụ học tập',
+    'Marketing/Quảng cáo',
+    'Bảo trì/Sửa chữa',
+    'Đối ngoại',
+    'Văn phòng phẩm',
+    'Quỹ hoạt động',
+    'Chi khác',
+  ],
 };
 
 const DEFAULT_USERS = [
@@ -1672,6 +1684,77 @@ class DatabaseService {
     };
 
     return await this.createOrUpdateMonthlySalary(salary);
+  }
+
+  // ─── Expense Management (Quản lý Chi phí) ──────────────────────────────────
+  private EXPENSES_FILE = path.join(DATA_DIR, 'expenses.json');
+
+  async getExpenses(query?: { month?: string; category?: string }): Promise<any[]> {
+    if (this.isCloud && this.mongoClient) {
+      const dbConn = this.mongoClient.db(this.dbName);
+      const filter: any = {};
+      if (query?.month) {
+        filter.date = { $regex: `^${query.month}` };
+      }
+      if (query?.category) filter.category = query.category;
+      const list = await dbConn.collection('expenses').find(filter).sort({ date: -1 }).toArray();
+      return list.map(({ _id, ...rest }) => rest);
+    } else {
+      try {
+        const data = fs.readFileSync(this.EXPENSES_FILE, 'utf-8');
+        let list = JSON.parse(data);
+        if (query?.month) list = list.filter((e: any) => e.date?.startsWith(query.month));
+        if (query?.category) list = list.filter((e: any) => e.category === query.category);
+        return list.sort((a: any, b: any) => b.date.localeCompare(a.date));
+      } catch { return []; }
+    }
+  }
+
+  async createExpense(expense: any): Promise<any> {
+    if (this.isCloud && this.mongoClient) {
+      const dbConn = this.mongoClient.db(this.dbName);
+      const newExpense = { ...expense };
+      await dbConn.collection('expenses').insertOne(newExpense);
+      const { _id, ...rest } = newExpense;
+      return rest;
+    } else {
+      const list = await this.getExpenses();
+      list.push(expense);
+      fs.writeFileSync(this.EXPENSES_FILE, JSON.stringify(list, null, 2), 'utf-8');
+      return expense;
+    }
+  }
+
+  async updateExpense(id: string, updates: any): Promise<any> {
+    if (this.isCloud && this.mongoClient) {
+      const dbConn = this.mongoClient.db(this.dbName);
+      await dbConn.collection('expenses').updateOne({ id }, { $set: updates });
+      const doc = await dbConn.collection('expenses').findOne({ id });
+      if (!doc) throw new Error('Không tìm thấy khoản chi');
+      const { _id, ...rest } = doc;
+      return rest;
+    } else {
+      const list = await this.getExpenses();
+      const idx = list.findIndex(e => e.id === id);
+      if (idx === -1) throw new Error('Không tìm thấy khoản chi');
+      list[idx] = { ...list[idx], ...updates, updatedAt: new Date().toISOString() };
+      fs.writeFileSync(this.EXPENSES_FILE, JSON.stringify(list, null, 2), 'utf-8');
+      return list[idx];
+    }
+  }
+
+  async deleteExpense(id: string): Promise<boolean> {
+    if (this.isCloud && this.mongoClient) {
+      const dbConn = this.mongoClient.db(this.dbName);
+      const res = await dbConn.collection('expenses').deleteOne({ id });
+      return (res.deletedCount ?? 0) > 0;
+    } else {
+      const list = await this.getExpenses();
+      const filtered = list.filter(e => e.id !== id);
+      if (list.length === filtered.length) return false;
+      fs.writeFileSync(this.EXPENSES_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+      return true;
+    }
   }
 
   // ─── Audit Logs ─────────────────────────────────────────────────────────────

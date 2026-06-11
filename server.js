@@ -44,6 +44,18 @@ var DEFAULT_SETTINGS = {
     "Momo",
     "ZaloPay",
     "Kh\xE1c"
+  ],
+  expenseCategories: [
+    "M\u1EB7t b\u1EB1ng",
+    "\u0110i\u1EC7n n\u01B0\u1EDBc",
+    "Internet",
+    "D\u1EE5ng c\u1EE5 h\u1ECDc t\u1EADp",
+    "Marketing/Qu\u1EA3ng c\xE1o",
+    "B\u1EA3o tr\xEC/S\u1EEDa ch\u1EEFa",
+    "\u0110\u1ED1i ngo\u1EA1i",
+    "V\u0103n ph\xF2ng ph\u1EA9m",
+    "Qu\u1EF9 ho\u1EA1t \u0111\u1ED9ng",
+    "Chi kh\xE1c"
   ]
 };
 var DEFAULT_USERS = [
@@ -56,6 +68,8 @@ var DatabaseService = class {
     this.isCloud = false;
     this.mongoClient = null;
     this.dbName = "kim_academy";
+    // ─── Expense Management (Quản lý Chi phí) ──────────────────────────────────
+    this.EXPENSES_FILE = path.join(DATA_DIR, "expenses.json");
     // ─── Audit Logs ─────────────────────────────────────────────────────────────
     this.AUDIT_LOG_FILE = path.join(DATA_DIR, "audit_logs.json");
     const mongoUri = process.env.MONGODB_URI;
@@ -1538,6 +1552,72 @@ var DatabaseService = class {
     };
     return await this.createOrUpdateMonthlySalary(salary);
   }
+  async getExpenses(query) {
+    if (this.isCloud && this.mongoClient) {
+      const dbConn = this.mongoClient.db(this.dbName);
+      const filter = {};
+      if (query?.month) {
+        filter.date = { $regex: `^${query.month}` };
+      }
+      if (query?.category) filter.category = query.category;
+      const list = await dbConn.collection("expenses").find(filter).sort({ date: -1 }).toArray();
+      return list.map(({ _id, ...rest }) => rest);
+    } else {
+      try {
+        const data = fs.readFileSync(this.EXPENSES_FILE, "utf-8");
+        let list = JSON.parse(data);
+        if (query?.month) list = list.filter((e) => e.date?.startsWith(query.month));
+        if (query?.category) list = list.filter((e) => e.category === query.category);
+        return list.sort((a, b) => b.date.localeCompare(a.date));
+      } catch {
+        return [];
+      }
+    }
+  }
+  async createExpense(expense) {
+    if (this.isCloud && this.mongoClient) {
+      const dbConn = this.mongoClient.db(this.dbName);
+      const newExpense = { ...expense };
+      await dbConn.collection("expenses").insertOne(newExpense);
+      const { _id, ...rest } = newExpense;
+      return rest;
+    } else {
+      const list = await this.getExpenses();
+      list.push(expense);
+      fs.writeFileSync(this.EXPENSES_FILE, JSON.stringify(list, null, 2), "utf-8");
+      return expense;
+    }
+  }
+  async updateExpense(id, updates) {
+    if (this.isCloud && this.mongoClient) {
+      const dbConn = this.mongoClient.db(this.dbName);
+      await dbConn.collection("expenses").updateOne({ id }, { $set: updates });
+      const doc = await dbConn.collection("expenses").findOne({ id });
+      if (!doc) throw new Error("Kh\xF4ng t\xECm th\u1EA5y kho\u1EA3n chi");
+      const { _id, ...rest } = doc;
+      return rest;
+    } else {
+      const list = await this.getExpenses();
+      const idx = list.findIndex((e) => e.id === id);
+      if (idx === -1) throw new Error("Kh\xF4ng t\xECm th\u1EA5y kho\u1EA3n chi");
+      list[idx] = { ...list[idx], ...updates, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+      fs.writeFileSync(this.EXPENSES_FILE, JSON.stringify(list, null, 2), "utf-8");
+      return list[idx];
+    }
+  }
+  async deleteExpense(id) {
+    if (this.isCloud && this.mongoClient) {
+      const dbConn = this.mongoClient.db(this.dbName);
+      const res = await dbConn.collection("expenses").deleteOne({ id });
+      return (res.deletedCount ?? 0) > 0;
+    } else {
+      const list = await this.getExpenses();
+      const filtered = list.filter((e) => e.id !== id);
+      if (list.length === filtered.length) return false;
+      fs.writeFileSync(this.EXPENSES_FILE, JSON.stringify(filtered, null, 2), "utf-8");
+      return true;
+    }
+  }
   async getAuditLogs(limit = 200) {
     if (this.isCloud && this.mongoClient) {
       const dbConn = this.mongoClient.db(this.dbName);
@@ -2273,6 +2353,74 @@ app.delete("/api/staff/:id", authenticateToken, async (req, res) => {
       entity: "staff",
       entityId: req.params.id,
       details: `X\xF3a nh\xE2n vi\xEAn ID: ${req.params.id}`,
+      user: req.user?.name || "unknown"
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+app.get("/api/expenses", authenticateToken, async (req, res) => {
+  try {
+    const query = {};
+    if (req.query.month) query.month = req.query.month;
+    if (req.query.category) query.category = req.query.category;
+    const expenses = await db.getExpenses(query);
+    res.json(expenses);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+app.post("/api/expenses", authenticateToken, async (req, res) => {
+  try {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const expense = {
+      id: `exp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      ...req.body,
+      createdBy: req.user?.name || "unknown",
+      createdAt: now,
+      updatedAt: now
+    };
+    const result = await db.createExpense(expense);
+    await db.addAuditLog({
+      action: "CREATE",
+      entity: "expense",
+      entityId: expense.id,
+      details: `Th\xEAm kho\u1EA3n chi: ${expense.category} - ${expense.description} (${expense.amount?.toLocaleString()}\u0111)`,
+      user: req.user?.name || "unknown"
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+app.put("/api/expenses/:id", authenticateToken, async (req, res) => {
+  try {
+    const result = await db.updateExpense(req.params.id, req.body);
+    await db.addAuditLog({
+      action: "UPDATE",
+      entity: "expense",
+      entityId: req.params.id,
+      details: `S\u1EEDa kho\u1EA3n chi ID: ${req.params.id}`,
+      user: req.user?.name || "unknown"
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+app.delete("/api/expenses/:id", authenticateToken, async (req, res) => {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Ch\u1EC9 admin m\u1EDBi c\xF3 th\u1EC3 x\xF3a kho\u1EA3n chi" });
+  }
+  try {
+    const success = await db.deleteExpense(req.params.id);
+    if (!success) return res.status(404).json({ message: "Kh\xF4ng t\xECm th\u1EA5y kho\u1EA3n chi" });
+    await db.addAuditLog({
+      action: "DELETE",
+      entity: "expense",
+      entityId: req.params.id,
+      details: `X\xF3a kho\u1EA3n chi ID: ${req.params.id}`,
       user: req.user?.name || "unknown"
     });
     res.json({ success: true });

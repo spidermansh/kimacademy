@@ -1,6 +1,7 @@
 export type PaymentMethod = string; // Ví dụ: 'Tiền mặt', 'Chuyển khoản', 'Momo'... (cấu hình động từ Settings)
 export type StudyType = "Trực tiếp" | "Online";
 export type RevenueCategory = string; // Ví dụ: 'Học phí offline', 'Sách'... (cấu hình động từ Settings)
+export type ExpenseCategory = string; // Ví dụ: 'Mặt bằng', 'Điện nước'... (cấu hình động từ Settings)
 export type ClassType = "offline" | "online";
 export type AttendanceStatus = "present" | "absent" | "excused"; // có mặt / vắng không phép / vắng có phép
 
@@ -12,6 +13,7 @@ export interface AppSettings {
   address: string;          // Địa chỉ
   feeTypes: string[];       // Danh sách loại khoản thu
   paymentMethods: string[]; // Danh sách hình thức thanh toán
+  expenseCategories: string[]; // Danh sách loại khoản chi
 }
 
 export interface TransactionEditLog {
@@ -224,5 +226,23 @@ export interface MonthlySalary {
   status: SalaryStatus;
   notes?: string;
   createdAt: string;
+}
+
+// ─── Expense Management Module ────────────────────────────────────────────────
+
+export interface Expense {
+  id: string;
+  date: string;                      // YYYY-MM-DD — ngày phát sinh chi phí
+  category: ExpenseCategory;         // "Mặt bằng", "Điện nước", "Marketing"...
+  description: string;               // Mô tả chi tiết
+  amount: number;                    // Số tiền chi
+  paymentMethod: string;             // Tiền mặt / CK / Momo...
+  isRecurring?: boolean;             // Chi phí định kỳ hàng tháng?
+  recurringNote?: string;            // "Hàng tháng", "Hàng quý"...
+  approvedBy?: string;               // Người duyệt
+  notes?: string;
+  createdBy: string;                 // Người nhập
+  createdAt: string;
+  updatedAt: string;
 }
 

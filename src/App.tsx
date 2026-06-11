@@ -18,8 +18,9 @@ import TeachingAttendance from './components/TeachingAttendance';
 import SalaryAdvanceManager from './components/SalaryAdvanceManager';
 import SalaryDashboard from './components/SalaryDashboard';
 import UserGuide from './components/UserGuide';
+import ExpenseManagement from './components/ExpenseManagement';
 import Login from './components/Login';
-import { Transaction, AppSettings } from './types';
+import { Transaction, Expense, AppSettings } from './types';
 import { api, auth } from './utils';
 import { ToastProvider, useToast } from './components/Toast';
 import {
@@ -27,10 +28,10 @@ import {
   Wallet, DollarSign, Menu, X, ChevronLeft, ChevronRight, ChevronDown,
   GraduationCap, Settings as SettingsIcon, PhoneCall,
   Briefcase, ClipboardCheck, HandCoins, Calculator,
-  FolderOpen, HelpCircle,
+  FolderOpen, HelpCircle, Receipt,
 } from 'lucide-react';
 
-type TabId = 'thu-tien' | 'quan-ly-hoc-vien' | 'quan-ly-lop' | 'diem-danh' | 'hoc-phi' | 'nhac-ph' | 'quan-ly-user' | 'cai-dat' | 'gv-home' | 'staff-list' | 'cham-cong' | 'ung-luong' | 'bang-luong' | 'huong-dan' | 'bc-dashboard' | 'bc-hoc-vien' | 'bc-lop' | 'bc-tai-chinh' | 'bc-pnl' | 'bc-cong-no' | 'bc-hieu-suat-gv' | 'bc-tuyen-sinh' | 'bc-si-so' | 'bc-dt-lop' | 'bc-chuyen-can' | 'bc-cp-nhan-su';
+type TabId = 'thu-tien' | 'chi-phi' | 'quan-ly-hoc-vien' | 'quan-ly-lop' | 'diem-danh' | 'hoc-phi' | 'nhac-ph' | 'quan-ly-user' | 'cai-dat' | 'gv-home' | 'staff-list' | 'cham-cong' | 'ung-luong' | 'bang-luong' | 'huong-dan' | 'bc-dashboard' | 'bc-hoc-vien' | 'bc-lop' | 'bc-tai-chinh' | 'bc-pnl' | 'bc-cong-no' | 'bc-hieu-suat-gv' | 'bc-tuyen-sinh' | 'bc-si-so' | 'bc-dt-lop' | 'bc-chuyen-can' | 'bc-cp-nhan-su';
 
 interface NavItem {
   id: TabId;
@@ -67,16 +68,26 @@ const NAV_MODULES: NavModule[] = [
     ],
   },
   {
-    id: 'hoc-vien',
+    id: 'tai-chinh',
+    label: 'Tài chính',
+    icon: <Wallet className="w-4 h-4" />,
+    color: 'emerald',
+    hiddenForTeacher: true,
+    items: [
+      { id: 'thu-tien',   label: 'Thu tiền',    icon: <DollarSign className="w-5 h-5" />,   color: 'emerald' },
+      { id: 'chi-phi',    label: 'Chi phí',     icon: <Receipt className="w-5 h-5" />,      color: 'red' },
+      { id: 'hoc-phi',    label: 'Học phí',     icon: <Wallet className="w-5 h-5" />,       color: 'cyan' },
+      { id: 'nhac-ph',    label: 'Nhắc PH',     icon: <PhoneCall className="w-5 h-5" />,    color: 'pink' },
+    ],
+  },
+  {
+    id: 'hoc-vu',
     label: 'Quản lý Học vụ',
     icon: <GraduationCap className="w-4 h-4" />,
     color: 'blue',
     items: [
       { id: 'gv-home',    label: 'Trang GV',    icon: <GraduationCap className="w-5 h-5" />, color: 'teal', teacherOnly: true },
-      { id: 'thu-tien',   label: 'Thu tiền',    icon: <DollarSign className="w-5 h-5" />,   color: 'emerald', hiddenForTeacher: true },
       { id: 'diem-danh',  label: 'Điểm danh',   icon: <CalendarDays className="w-5 h-5" />, color: 'amber' },
-      { id: 'hoc-phi',    label: 'Học phí',     icon: <Wallet className="w-5 h-5" />,       color: 'cyan', hiddenForTeacher: true },
-      { id: 'nhac-ph',    label: 'Nhắc PH',     icon: <PhoneCall className="w-5 h-5" />,    color: 'pink', hiddenForTeacher: true },
     ],
   },
   {
@@ -130,6 +141,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
 // Color map cho active state
 const ACTIVE_COLORS: Record<string, string> = {
   emerald: 'bg-emerald-500/20 text-emerald-300 border-l-2 border-emerald-400',
+  red:     'bg-red-500/20 text-red-300 border-l-2 border-red-400',
   blue:    'bg-blue-500/20 text-blue-300 border-l-2 border-blue-400',
   violet:  'bg-violet-500/20 text-violet-300 border-l-2 border-violet-400',
   amber:   'bg-amber-500/20 text-amber-300 border-l-2 border-amber-400',
@@ -146,6 +158,7 @@ const ACTIVE_COLORS: Record<string, string> = {
 
 const ICON_COLORS: Record<string, string> = {
   emerald: 'text-emerald-400',
+  red:     'text-red-400',
   blue:    'text-blue-400',
   violet:  'text-violet-400',
   amber:   'text-amber-400',
@@ -167,6 +180,7 @@ function AppInner() {
   const [classes, setClasses] = useState<any[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [staff, setStaff] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [pendingTransaction, setPendingTransaction] = useState<any | null>(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -217,13 +231,15 @@ function AppInner() {
         api.getClasses(),
         api.getSettings(),
         api.getStaff(),
+        api.getExpenses(),
       ])
-        .then(([txData, studentData, classData, settingsData, staffData]) => {
+        .then(([txData, studentData, classData, settingsData, staffData, expenseData]) => {
           setTransactions(txData);
           setStudents(studentData);
           setClasses(classData);
           setSettings(settingsData);
           setStaff(staffData);
+          setExpenses(expenseData);
         })
         .catch(err => {
           console.error('Lỗi khi tải dữ liệu:', err);
@@ -652,6 +668,16 @@ function AppInner() {
               {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </div>
+
+          {/* Version & Credit */}
+          {!sidebarCollapsed && (
+            <div className="px-3 pb-2 pt-1">
+              <p className="text-[9px] text-slate-600 text-center leading-relaxed">
+                Phát triển bởi: <span className="text-slate-400">Bùi Trần Sơn Hải</span> & <span className="text-slate-400">Antigravity</span>
+              </p>
+              <p className="text-[9px] text-slate-600 text-center">Ver: 1.1</p>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -791,6 +817,7 @@ function AppInner() {
             <ReportsDashboard
               transactions={transactions}
               students={students}
+              expenses={expenses}
               initialTab={activeTab === 'bao-cao' ? 'dashboard' : activeTab.replace('bc-', '') as any}
             />
 
@@ -830,6 +857,14 @@ function AppInner() {
               staff={staff}
               classes={classes}
               settings={settings}
+            />
+
+          ) : activeTab === 'chi-phi' ? (
+            <ExpenseManagement
+              expenses={expenses}
+              setExpenses={setExpenses}
+              settings={settings}
+              currentUser={user}
             />
 
           ) : activeTab === 'huong-dan' ? (

@@ -282,6 +282,30 @@ export const api = {
     return request(`/api/staff/${id}`, { method: 'DELETE' });
   },
 
+  // ═══ EXPENSE MODULE ═══════════════════════════════════════════════════════════
+  async getExpenses(query?: { month?: string; category?: string }): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (query?.month) params.set('month', query.month);
+    if (query?.category) params.set('category', query.category);
+    const qs = params.toString();
+    return request(`/api/expenses${qs ? `?${qs}` : ''}`);
+  },
+  async createExpense(data: any): Promise<any> {
+    return request('/api/expenses', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  async updateExpense(id: string, data: any): Promise<any> {
+    return request(`/api/expenses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+  async deleteExpense(id: string): Promise<any> {
+    return request(`/api/expenses/${id}`, { method: 'DELETE' });
+  },
+
   // Teaching Logs (Chấm công GV)
   async getTeachingLogs(query?: { staffId?: string; month?: string }): Promise<any[]> {
     const params = new URLSearchParams();
