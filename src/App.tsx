@@ -17,6 +17,7 @@ import StaffManagement from './components/StaffManagement';
 import TeachingAttendance from './components/TeachingAttendance';
 import SalaryAdvanceManager from './components/SalaryAdvanceManager';
 import SalaryDashboard from './components/SalaryDashboard';
+import UserGuide from './components/UserGuide';
 import Login from './components/Login';
 import { Transaction, AppSettings } from './types';
 import { api, auth } from './utils';
@@ -26,9 +27,10 @@ import {
   Wallet, DollarSign, Menu, X, ChevronLeft, ChevronRight, ChevronDown,
   GraduationCap, Settings as SettingsIcon, PhoneCall,
   Briefcase, ClipboardCheck, HandCoins, Calculator,
+  FolderOpen, HelpCircle,
 } from 'lucide-react';
 
-type TabId = 'thu-tien' | 'quan-ly-hoc-vien' | 'quan-ly-lop' | 'diem-danh' | 'hoc-phi' | 'nhac-ph' | 'quan-ly-user' | 'cai-dat' | 'gv-home' | 'staff-list' | 'cham-cong' | 'ung-luong' | 'bang-luong' | 'bc-dashboard' | 'bc-hoc-vien' | 'bc-lop' | 'bc-tai-chinh' | 'bc-pnl' | 'bc-cong-no' | 'bc-hieu-suat-gv' | 'bc-tuyen-sinh' | 'bc-si-so' | 'bc-dt-lop' | 'bc-chuyen-can' | 'bc-cp-nhan-su';
+type TabId = 'thu-tien' | 'quan-ly-hoc-vien' | 'quan-ly-lop' | 'diem-danh' | 'hoc-phi' | 'nhac-ph' | 'quan-ly-user' | 'cai-dat' | 'gv-home' | 'staff-list' | 'cham-cong' | 'ung-luong' | 'bang-luong' | 'huong-dan' | 'bc-dashboard' | 'bc-hoc-vien' | 'bc-lop' | 'bc-tai-chinh' | 'bc-pnl' | 'bc-cong-no' | 'bc-hieu-suat-gv' | 'bc-tuyen-sinh' | 'bc-si-so' | 'bc-dt-lop' | 'bc-chuyen-can' | 'bc-cp-nhan-su';
 
 interface NavItem {
   id: TabId;
@@ -53,18 +55,28 @@ interface NavModule {
 // Module-based navigation structure
 const NAV_MODULES: NavModule[] = [
   {
+    id: 'danh-muc',
+    label: 'Danh mục',
+    icon: <FolderOpen className="w-4 h-4" />,
+    color: 'indigo',
+    hiddenForTeacher: true,
+    items: [
+      { id: 'quan-ly-hoc-vien', label: 'Học viên',     icon: <Users className="w-5 h-5" />,    color: 'blue' },
+      { id: 'quan-ly-lop',      label: 'Lớp học',     icon: <BookOpen className="w-5 h-5" />, color: 'violet' },
+      { id: 'staff-list',       label: 'Nhân viên',    icon: <Briefcase className="w-5 h-5" />, color: 'orange' },
+    ],
+  },
+  {
     id: 'hoc-vien',
-    label: 'Quản lý Học viên',
+    label: 'Quản lý Học vụ',
     icon: <GraduationCap className="w-4 h-4" />,
     color: 'blue',
     items: [
-      { id: 'gv-home',           label: 'Trang GV',    icon: <GraduationCap className="w-5 h-5" />, color: 'teal', teacherOnly: true },
-      { id: 'thu-tien',         label: 'Thu tiền',    icon: <DollarSign className="w-5 h-5" />,   color: 'emerald', hiddenForTeacher: true },
-      { id: 'quan-ly-hoc-vien', label: 'Học viên',    icon: <Users className="w-5 h-5" />,        color: 'blue' },
-      { id: 'quan-ly-lop',      label: 'Lớp học',     icon: <BookOpen className="w-5 h-5" />,     color: 'violet' },
-      { id: 'diem-danh',        label: 'Điểm danh',   icon: <CalendarDays className="w-5 h-5" />, color: 'amber' },
-      { id: 'hoc-phi',          label: 'Học phí',     icon: <Wallet className="w-5 h-5" />,       color: 'cyan', hiddenForTeacher: true },
-      { id: 'nhac-ph',          label: 'Nhắc PH',     icon: <PhoneCall className="w-5 h-5" />,    color: 'pink', hiddenForTeacher: true },
+      { id: 'gv-home',    label: 'Trang GV',    icon: <GraduationCap className="w-5 h-5" />, color: 'teal', teacherOnly: true },
+      { id: 'thu-tien',   label: 'Thu tiền',    icon: <DollarSign className="w-5 h-5" />,   color: 'emerald', hiddenForTeacher: true },
+      { id: 'diem-danh',  label: 'Điểm danh',   icon: <CalendarDays className="w-5 h-5" />, color: 'amber' },
+      { id: 'hoc-phi',    label: 'Học phí',     icon: <Wallet className="w-5 h-5" />,       color: 'cyan', hiddenForTeacher: true },
+      { id: 'nhac-ph',    label: 'Nhắc PH',     icon: <PhoneCall className="w-5 h-5" />,    color: 'pink', hiddenForTeacher: true },
     ],
   },
   {
@@ -74,10 +86,9 @@ const NAV_MODULES: NavModule[] = [
     color: 'orange',
     hiddenForTeacher: true,
     items: [
-      { id: 'staff-list', label: 'Danh sách NV', icon: <Users className="w-5 h-5" />,          color: 'orange' },
       { id: 'cham-cong',  label: 'Chấm công GV', icon: <ClipboardCheck className="w-5 h-5" />, color: 'amber' },
       { id: 'ung-luong',  label: 'Ứng lương',    icon: <HandCoins className="w-5 h-5" />,      color: 'yellow' },
-      { id: 'bang-luong',  label: 'Bảng lương',   icon: <Calculator className="w-5 h-5" />,     color: 'lime' },
+      { id: 'bang-luong', label: 'Bảng lương',   icon: <Calculator className="w-5 h-5" />,     color: 'lime' },
     ],
   },
   {
@@ -105,6 +116,7 @@ const NAV_MODULES: NavModule[] = [
 
 // System items (flat, admin only)
 const SYSTEM_ITEMS: NavItem[] = [
+  { id: 'huong-dan',   label: 'Hướng dẫn',   icon: <HelpCircle className="w-5 h-5" />, color: 'cyan' },
   { id: 'quan-ly-user', label: 'Người dùng', icon: <Users className="w-5 h-5" />,        color: 'slate', adminOnly: true },
   { id: 'cai-dat',      label: 'Cài đặt',    icon: <SettingsIcon className="w-5 h-5" />, color: 'indigo', adminOnly: true },
 ];
@@ -819,6 +831,9 @@ function AppInner() {
               classes={classes}
               settings={settings}
             />
+
+          ) : activeTab === 'huong-dan' ? (
+            <UserGuide onNavigate={(tab) => setActiveTab(tab as TabId)} />
 
           ) : null}
         </main>
