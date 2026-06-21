@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { prisma } from '../../src/infrastructure/db/prisma.client';
 import { REPORT_GROUPS } from '../../src/shared/business/reports';
+import { parseFeeHistory } from '../../src/shared/business/tuition';
+import { toArray, toObject } from '../../src/shared/json';
 
 function getReportById(id: string) {
   for (const group of REPORT_GROUPS) {
@@ -63,7 +65,7 @@ async function buildReportParams(filters: any = {}) {
       parentPhone: primaryContact ? primaryContact.phone : '',
       className: activeEnroll?.class.name || '',
       feePerSession: activeEnroll ? activeEnroll.feePerSession : 0,
-      feeHistory: activeEnroll ? JSON.parse(activeEnroll.feeHistory) : [],
+      feeHistory: activeEnroll ? parseFeeHistory(activeEnroll.feeHistory) : [],
       status: s.status as any,
       enrollDate: s.enrollDate || '',
       createdAt: s.createdAt.toISOString(),
@@ -84,10 +86,10 @@ async function buildReportParams(filters: any = {}) {
       maxStudents: c.maxStudents || 15,
       status: c.status as any,
       defaultFee: c.defaultFeePerSession,
-      scheduleDays: JSON.parse(c.scheduleDays),
+      scheduleDays: toArray<string>(c.scheduleDays),
       scheduleTime: c.scheduleTime || '',
       description: c.description || '',
-      schedule: c.scheduleTime ? `${JSON.parse(c.scheduleDays).join(', ')} — ${c.scheduleTime}` : '',
+      schedule: c.scheduleTime ? `${toArray<string>(c.scheduleDays).join(', ')} — ${c.scheduleTime}` : '',
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString()
     };
@@ -252,7 +254,7 @@ async function buildReportParams(filters: any = {}) {
     status: d.status as any,
     completedAt: d.completedAt,
     completedBy: d.completedBy,
-    summary: JSON.parse(d.summary),
+    summary: toObject(d.summary),
     note: d.note || '',
     createdAt: (d as any).createdAt ? (d as any).createdAt.toISOString() : new Date().toISOString()
   }));
@@ -327,7 +329,7 @@ async function buildReportParams(filters: any = {}) {
     startDate: e.startDate,
     endDate: e.endDate || undefined,
     isActive: e.isActive,
-    feeHistory: e.feeHistory || '[]',
+    feeHistory: parseFeeHistory(e.feeHistory),
     createdAt: e.createdAt.toISOString(),
     balance: e.ledgerEntries?.[0]?.balance ?? 0,
     sessionsRemaining: e.ledgerEntries?.[0]?.sessionsRemaining ?? 0

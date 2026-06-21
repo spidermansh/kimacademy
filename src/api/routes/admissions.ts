@@ -305,7 +305,7 @@ admissionsRouter.post('/admission-leads/:id/convert', requireAdmissionRole, asyn
           startDate: new Date().toISOString().slice(0, 10),
           isActive: true,
           createdBy: req.user?.name || req.user?.username || 'unknown',
-          feeHistory: '[]'
+          feeHistory: []
         }
       });
 

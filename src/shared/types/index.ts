@@ -130,7 +130,7 @@ export interface Enrollment {
   endDate?: string;
   isActive: boolean;
   transferNote?: string;
-  feeHistory?: string; // JSON String
+  feeHistory?: FeeChangeLog[]; // jsonb (đã parse)
   createdAt: string;
 }
 

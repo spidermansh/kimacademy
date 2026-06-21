@@ -230,9 +230,9 @@ settingsRouter.post('/admin/seed-demo', requireAdmin, async (req, res) => {
       const staff = await prisma.staffMember.findMany({ take: 2 });
       await prisma.class.createMany({
         data: [
-          { name: 'Lớp Starter A', type: 'offline', teacherId: staff[0]?.id || '', room: 'P101', maxStudents: 12, status: 'active', defaultFeePerSession: 150000, scheduleDays: '["Thứ 2","Thứ 4","Thứ 6"]', scheduleTime: '08:00-09:30' },
-          { name: 'Lớp Beginner B', type: 'offline', teacherId: staff[1]?.id || staff[0]?.id || '', room: 'P102', maxStudents: 12, status: 'active', defaultFeePerSession: 180000, scheduleDays: '["Thứ 3","Thứ 5","Thứ 7"]', scheduleTime: '09:30-11:00' },
-          { name: 'Lớp Advanced C', type: 'offline', teacherId: staff[0]?.id || '', room: 'P201', maxStudents: 10, status: 'active', defaultFeePerSession: 250000, scheduleDays: '["Thứ 2","Thứ 4"]', scheduleTime: '14:00-15:30' },
+          { name: 'Lớp Starter A', type: 'offline', teacherId: staff[0]?.id || '', room: 'P101', maxStudents: 12, status: 'active', defaultFeePerSession: 150000, scheduleDays: ['Thứ 2', 'Thứ 4', 'Thứ 6'], scheduleTime: '08:00-09:30' },
+          { name: 'Lớp Beginner B', type: 'offline', teacherId: staff[1]?.id || staff[0]?.id || '', room: 'P102', maxStudents: 12, status: 'active', defaultFeePerSession: 180000, scheduleDays: ['Thứ 3', 'Thứ 5', 'Thứ 7'], scheduleTime: '09:30-11:00' },
+          { name: 'Lớp Advanced C', type: 'offline', teacherId: staff[0]?.id || '', room: 'P201', maxStudents: 10, status: 'active', defaultFeePerSession: 250000, scheduleDays: ['Thứ 2', 'Thứ 4'], scheduleTime: '14:00-15:30' },
         ]
       });
       classesCreated = 3;
@@ -270,7 +270,7 @@ settingsRouter.post('/admin/seed-demo', requireAdmin, async (req, res) => {
         // Enrollment
         const cls = classes[i % classes.length];
         const enrollment = await prisma.enrollment.create({
-          data: { studentId: student.id, classId: cls.id, feePerSession: cls.defaultFeePerSession, startDate: s.enrollDate, isActive: true, feeHistory: '[]', createdBy: 'seed-demo' }
+          data: { studentId: student.id, classId: cls.id, feePerSession: cls.defaultFeePerSession, startDate: s.enrollDate, isActive: true, feeHistory: [], createdBy: 'seed-demo' }
         });
         enrollmentsCreated++;
 

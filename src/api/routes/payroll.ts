@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth';
 import { generateUniqueCode } from '../utils/codes';
+import { toArray } from '../../shared/json';
 
 export const payrollRouter = Router();
 
@@ -81,7 +82,7 @@ payrollRouter.post('/staff', requireAdmin, async (req, res) => {
         applyUnemploymentInsurance: !!data.applyUnemploymentInsurance,
         insuranceBaseSalary: data.insuranceBaseSalary !== undefined ? Number(data.insuranceBaseSalary) : null,
         ratePerHour: Number(data.ratePerHour || 0),
-        salaryHistory: JSON.stringify(initialHistory)
+        salaryHistory: initialHistory
       }
     });
 
@@ -114,21 +115,13 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
       ratePerHrNew !== (existing.ratePerHour || 0) ||
       otherAllowNew !== (existing.otherMonthlyAllowance || 0);
 
-    let salaryHistoryStr = existing.salaryHistory;
+    let salaryHistoryValue: any[] = toArray(existing.salaryHistory);
 
     if (isSalaryChanged) {
-      let history = [];
-      if (existing.salaryHistory) {
-        try {
-          history = JSON.parse(existing.salaryHistory);
-        } catch (e) {
-          history = [];
-        }
-      }
-      if (!Array.isArray(history)) history = [];
+      let history = toArray<any>(existing.salaryHistory);
 
       const targetMonth = data.effectiveMonth || new Date().toISOString().slice(0, 7);
-      
+
       // Filter out existing history entry for the same month to prevent duplicates
       history = history.filter((h: any) => h.effectiveMonth !== targetMonth);
 
@@ -141,7 +134,7 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
         otherMonthlyAllowance: otherAllowNew
       });
 
-      salaryHistoryStr = JSON.stringify(history);
+      salaryHistoryValue = history;
 
       // Create AuditLog entry
       const changes = [];
@@ -164,18 +157,18 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
           entity: 'staff',
           entityId: id,
           details: `Điều chỉnh lương nhân sự ${existing.name} áp dụng từ tháng ${targetMonth}. Thay đổi: ${changes.join(', ')}`,
-          oldValue: JSON.stringify({
+          oldValue: {
             baseSalary: existing.baseSalary,
             ratePerSession: existing.ratePerSession,
             ratePerHour: existing.ratePerHour,
             otherMonthlyAllowance: existing.otherMonthlyAllowance
-          }),
-          newValue: JSON.stringify({
+          },
+          newValue: {
             baseSalary: baseSalNew,
             ratePerSession: ratePerSessNew,
             ratePerHour: ratePerHrNew,
             otherMonthlyAllowance: otherAllowNew
-          }),
+          },
           user: req.user?.name || req.user?.username || 'unknown'
         }
       });
@@ -204,7 +197,7 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
         applyUnemploymentInsurance: data.applyUnemploymentInsurance !== undefined ? !!data.applyUnemploymentInsurance : undefined,
         insuranceBaseSalary: data.insuranceBaseSalary !== undefined ? Number(data.insuranceBaseSalary) : undefined,
         ratePerHour: data.ratePerHour !== undefined ? Number(data.ratePerHour) : undefined,
-        salaryHistory: salaryHistoryStr
+        salaryHistory: salaryHistoryValue
       }
     });
 
@@ -448,7 +441,7 @@ async function calculateStaffSalary(staffId: string, month: string, periodId: st
 
   if (staff.salaryHistory) {
     try {
-      const history = JSON.parse(staff.salaryHistory);
+      const history = toArray<any>(staff.salaryHistory);
       if (Array.isArray(history) && history.length > 0) {
         const sorted = [...history].sort((a: any, b: any) => a.effectiveMonth.localeCompare(b.effectiveMonth));
         const applicable = sorted.filter((h: any) => h.effectiveMonth <= month);

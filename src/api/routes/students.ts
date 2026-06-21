@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { generateUniqueCode } from '../utils/codes';
+import { parseFeeHistory } from '../../shared/business/tuition';
 
 export const studentsRouter = Router();
 
@@ -38,7 +39,7 @@ studentsRouter.get('/students', async (req, res) => {
         parentPhone: primaryContact ? primaryContact.phone : '',
         className: activeEnrollment?.class?.name || '',
         feePerSession: activeEnrollment ? activeEnrollment.feePerSession : 0,
-        feeHistory: activeEnrollment ? JSON.parse(activeEnrollment.feeHistory) : [],
+        feeHistory: activeEnrollment ? parseFeeHistory(activeEnrollment.feeHistory) : [],
         status: s.status,
         enrollDate: s.enrollDate,
         createdAt: s.createdAt,
@@ -98,7 +99,7 @@ studentsRouter.post('/students', requireAcademicRole, async (req, res) => {
               startDate: data.enrollDate || new Date().toISOString().slice(0, 10),
               isActive: true,
               createdBy: req.user?.name || req.user?.username || 'unknown',
-              feeHistory: '[]'
+              feeHistory: []
             }
           });
 
@@ -305,7 +306,7 @@ studentsRouter.post('/students/batch', requireAcademicRole, async (req, res) => 
                 startDate: data.enrollDate || new Date().toISOString().slice(0, 10),
                 isActive: true,
                 createdBy: req.user?.name || req.user?.username || 'import',
-                feeHistory: '[]'
+                feeHistory: []
               }
             });
 

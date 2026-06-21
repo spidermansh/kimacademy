@@ -110,7 +110,7 @@ classesRouter.post('/classes', requireAcademicRole, async (req, res) => {
         maxStudents: data.maxStudents ? Number(data.maxStudents) : 15,
         status: data.status || 'active',
         defaultFeePerSession: data.defaultFeePerSession !== undefined ? Number(data.defaultFeePerSession) : Number(data.defaultFee || 0),
-        scheduleDays: JSON.stringify(data.scheduleDays || []),
+        scheduleDays: Array.isArray(data.scheduleDays) ? data.scheduleDays : [],
         scheduleTime: data.scheduleTime || null,
         description: data.description || null
       }
@@ -165,7 +165,7 @@ classesRouter.put('/classes/:id', requireAcademicRole, async (req, res) => {
       maxStudents: data.maxStudents ? Number(data.maxStudents) : undefined,
       status: data.status,
       defaultFeePerSession: data.defaultFeePerSession !== undefined ? Number(data.defaultFeePerSession) : (data.defaultFee !== undefined ? Number(data.defaultFee) : undefined),
-      scheduleDays: data.scheduleDays ? JSON.stringify(data.scheduleDays) : undefined,
+      scheduleDays: Array.isArray(data.scheduleDays) ? data.scheduleDays : undefined,
       scheduleTime: data.scheduleTime,
       description: data.description
     };

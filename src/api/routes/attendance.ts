@@ -1,7 +1,7 @@
 ﻿import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { getFeeAtDate } from '../../shared/business/tuition';
+import { getFeeAtDate, parseFeeHistory } from '../../shared/business/tuition';
 import { recalcEnrollmentLedger } from '../services/ledger';
 
 export const attendanceRouter = Router();
@@ -160,7 +160,7 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
       if (!enrollment) continue;
 
       const sessionsDeducted = r.status === 'excused' ? 0 : 1;
-      const feeApplied = r.status === 'excused' ? 0 : getFeeAtDate(date, enrollment.feePerSession, JSON.parse(enrollment.feeHistory || '[]'));
+      const feeApplied = r.status === 'excused' ? 0 : getFeeAtDate(date, enrollment.feePerSession, parseFeeHistory(enrollment.feeHistory));
 
       // Check if already exists
       const existing = await tx.attendanceRecord.findFirst({

@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { computeAlerts } from '../../shared/business/alerts';
+import { parseFeeHistory } from '../../shared/business/tuition';
+import { toArray, toJsonString } from '../../shared/json';
 import { authenticateToken } from '../middleware/auth';
 
 export const notificationsRouter = Router();
@@ -112,7 +114,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
         parentPhone: primaryContact ? primaryContact.phone : '',
         className: activeEnroll?.class.name || '',
         feePerSession: activeEnroll ? activeEnroll.feePerSession : 0,
-        feeHistory: activeEnroll ? JSON.parse(activeEnroll.feeHistory) : [],
+        feeHistory: activeEnroll ? parseFeeHistory(activeEnroll.feeHistory) : [],
         status: s.status as any,
         enrollDate: s.enrollDate || '',
         createdAt: s.createdAt.toISOString(),
@@ -133,10 +135,10 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
         maxStudents: c.maxStudents || 15,
         status: c.status as any,
         defaultFee: c.defaultFeePerSession,
-        scheduleDays: JSON.parse(c.scheduleDays),
+        scheduleDays: toArray<string>(c.scheduleDays),
         scheduleTime: c.scheduleTime || '',
         description: c.description || '',
-        schedule: c.scheduleTime ? `${JSON.parse(c.scheduleDays).join(', ')} — ${c.scheduleTime}` : '',
+        schedule: c.scheduleTime ? `${toArray<string>(c.scheduleDays).join(', ')} — ${c.scheduleTime}` : '',
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString()
       };
@@ -233,7 +235,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       applyUnemploymentInsurance: s.applyUnemploymentInsurance,
       insuranceBaseSalary: s.insuranceBaseSalary || 0,
       ratePerHour: s.ratePerHour || 0,
-      salaryHistory: s.salaryHistory || '[]',
+      salaryHistory: toJsonString(s.salaryHistory),
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString()
     }));
@@ -332,7 +334,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       endDate: e.endDate || undefined,
       isActive: e.isActive,
       transferNote: e.transferNote || undefined,
-      feeHistory: JSON.parse(e.feeHistory || '[]'),
+      feeHistory: parseFeeHistory(e.feeHistory),
       createdAt: e.createdAt.toISOString(),
       createdBy: e.createdBy
     }));

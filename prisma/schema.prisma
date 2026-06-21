@@ -43,7 +43,7 @@ model StaffMember {
   applyUnemploymentInsurance  Boolean            @default(false)
   insuranceBaseSalary         Float?
   ratePerHour                 Float?             @default(0.0)
-  salaryHistory               String             @default("[]")
+  salaryHistory               Json               @default("[]")
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
   sessions                    Session[]          @relation("TaughtSessions")
@@ -66,7 +66,7 @@ model Class {
   maxStudents          Int?
   status               String             @default("active")
   defaultFeePerSession Float              @default(0.0)
-  scheduleDays         String             @default("[]") // stored as JSON array string
+  scheduleDays         Json               @default("[]") // JSON array (jsonb)
   scheduleTime         String?
   description          String?
   createdAt            DateTime           @default(now())
@@ -132,7 +132,7 @@ model Enrollment {
   endDate           String?            // YYYY-MM-DD
   isActive          Boolean            @default(true)
   transferNote      String?
-  feeHistory        String             @default("[]") // stored as JSON array string
+  feeHistory        Json               @default("[]") // JSON array (jsonb)
   createdAt         DateTime           @default(now())
   createdBy         String
   attendanceRecords AttendanceRecord[]
@@ -200,7 +200,7 @@ model TuitionTransaction {
   notes         String?
   isReconciled  Boolean  @default(false)
   isInvoiced    Boolean  @default(false)
-  editHistory   String   @default("[]") // stored as JSON array string
+  editHistory   Json     @default("[]") // JSON array (jsonb)
   source        String?  @default("manual") // manual | import
   importBatchId String?
   createdAt     DateTime @default(now())
@@ -396,7 +396,7 @@ model DailyClose {
   status      String   @default("completed") // completed
   completedAt String
   completedBy String
-  summary     String   // stored as JSON string
+  summary     Json     // JSON object (jsonb)
   note        String?
 
   @@index([date])
@@ -409,8 +409,8 @@ model AuditLog {
   entity    String
   entityId  String?
   details   String?
-  oldValue  String?  // Giá trị cũ (JSON string)
-  newValue  String?  // Giá trị mới (JSON string)
+  oldValue  Json?    // Giá trị cũ (jsonb)
+  newValue  Json?    // Giá trị mới (jsonb)
   user      String
   timestamp DateTime @default(now())
 }
@@ -438,7 +438,7 @@ model SystemParameter {
 model FeatureFlag {
   key             String   @id
   enabled         Boolean  @default(false)
-  enabledForRoles String   @default("[]") // stored as JSON array string
+  enabledForRoles Json     @default("[]") // JSON array (jsonb)
   description     String?
 }
 
@@ -450,7 +450,7 @@ model ImportBatch {
   fileName     String
   rowCount     Int      @default(0)
   successCount Int      @default(0)
-  errorLog     String?  // stored as JSON string
+  errorLog     Json?    // JSON (jsonb)
   createdAt    DateTime @default(now())
   createdBy    String
 }
@@ -527,7 +527,7 @@ model InventoryVariant {
   item       InventoryItem       @relation(fields: [itemId], references: [id])
   sku        String              @unique
   name       String
-  attributes String              @default("{}") // stored as JSON string
+  attributes Json                @default("{}") // JSON object (jsonb)
   barcode    String?
   isActive   Boolean             @default(true)
   createdAt  DateTime            @default(now())

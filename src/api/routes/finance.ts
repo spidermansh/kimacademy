@@ -5,6 +5,7 @@ import { isTuitionRevenue, REVENUE_CATEGORY_TUITION_OFFLINE } from '../../shared
 import { validateBody } from '../utils/validate';
 import { createTransactionSchema, createExpenseSchema } from '../schemas';
 import { recalcEnrollmentLedger } from '../services/ledger';
+import { coerceJson } from '../../shared/json';
 
 export const financeRouter = Router();
 
@@ -425,7 +426,7 @@ financeRouter.post('/daily-close', requireFinanceRole, async (req, res) => {
         status: 'completed',
         completedAt: new Date().toISOString(),
         completedBy: req.user?.name || req.user?.username || 'unknown',
-        summary: typeof summary === 'string' ? summary : JSON.stringify(summary),
+        summary: coerceJson(summary),
         note: note || ''
       }
     });

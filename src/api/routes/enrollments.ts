@@ -5,6 +5,7 @@ import { PAYMENT_METHOD_BALANCE_TRANSFER } from '../../shared/constants';
 import { validateBody } from '../utils/validate';
 import { createEnrollmentSchema } from '../schemas';
 import { recalcEnrollmentLedger } from '../services/ledger';
+import { parseFeeHistory } from '../../shared/business/tuition';
 
 export const enrollmentsRouter = Router();
 
@@ -53,7 +54,7 @@ enrollmentsRouter.get('/enrollments', async (req, res) => {
       endDate: e.endDate || '',
       isActive: e.isActive,
       transferNote: e.transferNote || '',
-      feeHistory: JSON.parse(e.feeHistory || '[]'),
+      feeHistory: parseFeeHistory(e.feeHistory),
       createdAt: e.createdAt,
       sessionsRemaining: e.ledgerEntries[0]?.sessionsRemaining || 0,
       balance: e.ledgerEntries[0]?.balance || 0
@@ -79,7 +80,7 @@ enrollmentsRouter.post('/enrollments', requireAcademicRole, validateBody(createE
           startDate: data.startDate || new Date().toISOString().slice(0, 10),
           isActive: data.isActive !== undefined ? data.isActive : true,
           createdBy: req.user?.name || req.user?.username || 'unknown',
-          feeHistory: '[]'
+          feeHistory: []
         }
       });
 
@@ -177,7 +178,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
         startDate: transferDate,
         isActive: true,
         createdBy: req.user?.name || req.user?.username || 'unknown',
-        feeHistory: '[]',
+        feeHistory: [],
         transferNote: `Chuyển từ lớp ${oldClassName || 'Không lớp'}`
       }
     });
@@ -287,7 +288,7 @@ enrollmentsRouter.post('/enrollments/add-class', requireAcademicRole, async (req
         startDate,
         isActive: true,
         createdBy: req.user?.name || req.user?.username || 'unknown',
-        feeHistory: '[]',
+        feeHistory: [],
         transferNote: 'Đăng ký thêm lớp học'
       }
     });
@@ -337,7 +338,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, async (req, r
     const oldFee = enrollment.feePerSession;
 
     if (oldFee !== newFee) {
-      const feeHistory = JSON.parse(enrollment.feeHistory || '[]');
+      const feeHistory = parseFeeHistory(enrollment.feeHistory);
       feeHistory.push({
         changedBy: req.user?.name || req.user?.username || 'Hệ thống',
         changedAt: new Date().toISOString(),
@@ -351,7 +352,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, async (req, r
         where: { id },
         data: {
           feePerSession: newFee,
-          feeHistory: JSON.stringify(feeHistory)
+          feeHistory: feeHistory as any
         }
       });
 
