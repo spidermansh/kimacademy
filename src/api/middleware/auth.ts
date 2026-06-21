@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../config/env';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'kim_academy_super_secret_key';
+const JWT_SECRET = getJwtSecret();
 
 export function authenticateToken(
   req: Request,
@@ -33,4 +34,13 @@ export function requireAdmin(
     return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
   }
   next();
+}
+
+export function requireRole(roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+    }
+    next();
+  };
 }

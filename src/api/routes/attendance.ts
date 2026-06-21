@@ -1,11 +1,12 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { getFeeAtDate } from '../../shared/business/tuition';
 
 export const attendanceRouter = Router();
 
 attendanceRouter.use(authenticateToken);
+const requireAttendanceRole = requireRole(['admin', 'staff', 'accountant', 'teacher', 'teaching_assistant']);
 
 // GET attendance records
 attendanceRouter.get('/attendance', async (req, res) => {
@@ -63,17 +64,17 @@ attendanceRouter.get('/attendance', async (req, res) => {
 });
 
 // POST save attendance batch (with ledger recalculation and TeachingLog creation)
-attendanceRouter.post('/attendance/batch', async (req, res) => {
+attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, res) => {
   try {
     const { records, teacherId, teacherName, isSubstitute, originalTeacherId, originalTeacherName, classId, date: bodyDate } = req.body;
     if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ message: 'Dữ liệu điểm danh không hợp lệ' });
+      return res.status(400).json({ message: 'Dá»¯ liá»‡u Ä‘iá»ƒm danh khÃ´ng há»£p lá»‡' });
     }
 
     const firstRecord = records[0];
     const date = bodyDate || firstRecord.date;
     const className = firstRecord.className;
-    
+
     // Resolve classId
     let dbClassId = classId || firstRecord.classId;
     let cls = await prisma.class.findFirst({
@@ -88,22 +89,23 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
       }
     });
     if (!cls) {
-      return res.status(400).json({ message: `Không tìm thấy lớp học ${className || dbClassId}` });
+      return res.status(400).json({ message: `KhÃ´ng tÃ¬m tháº¥y lá»›p há»c ${className || dbClassId}` });
     }
     dbClassId = cls.id;
 
     // Resolve teacher
     const finalTeacherId = teacherId || cls.teacherId;
     const teacher = await prisma.staffMember.findUnique({ where: { id: finalTeacherId } });
-    const finalTeacherName = teacher?.name || teacherName || 'Giáo viên';
+    const finalTeacherName = teacher?.name || teacherName || 'GiÃ¡o viÃªn';
 
+    const savedRecords = await prisma.$transaction(async (tx) => {
     // 1. Find or create Session
-    let session = await prisma.session.findFirst({
+    let session = await tx.session.findFirst({
       where: { classId: dbClassId, date }
     });
 
     if (!session) {
-      session = await prisma.session.create({
+      session = await tx.session.create({
         data: {
           classId: dbClassId,
           date,
@@ -116,7 +118,7 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
       });
     } else {
       // Update session teacher if modified
-      session = await prisma.session.update({
+      session = await tx.session.update({
         where: { id: session.id },
         data: {
           teacherId: finalTeacherId,
@@ -131,7 +133,7 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
 
     // 2. Save each attendance record
     for (const r of records) {
-      const student = await prisma.student.findFirst({
+      const student = await tx.student.findFirst({
         where: {
           OR: [
             { id: r.studentId },
@@ -145,12 +147,12 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
       if (!student) continue;
 
       // Find enrollment
-      let enrollment = await prisma.enrollment.findFirst({
+      let enrollment = await tx.enrollment.findFirst({
         where: { studentId: student.id, classId: dbClassId, isActive: true }
       });
       if (!enrollment) {
         // Fallback to any enrollment for this student in this class
-        enrollment = await prisma.enrollment.findFirst({
+        enrollment = await tx.enrollment.findFirst({
           where: { studentId: student.id, classId: dbClassId }
         });
       }
@@ -160,13 +162,13 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
       const feeApplied = r.status === 'excused' ? 0 : getFeeAtDate(date, enrollment.feePerSession, JSON.parse(enrollment.feeHistory || '[]'));
 
       // Check if already exists
-      const existing = await prisma.attendanceRecord.findFirst({
+      const existing = await tx.attendanceRecord.findFirst({
         where: { sessionId: session.id, studentId: student.id }
       });
 
       let saved;
       if (existing) {
-        saved = await prisma.attendanceRecord.update({
+        saved = await tx.attendanceRecord.update({
           where: { id: existing.id },
           data: {
             status: r.status,
@@ -177,7 +179,7 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
           }
         });
       } else {
-        saved = await prisma.attendanceRecord.create({
+        saved = await tx.attendanceRecord.create({
           data: {
             id: r.id || undefined,
             sessionId: session.id,
@@ -200,21 +202,21 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
 
     // 3. Recalculate Tuition Ledgers
     for (const enrollmentId of enrollmentsToUpdate) {
-      const allAttendance = await prisma.attendanceRecord.findMany({
+      const allAttendance = await tx.attendanceRecord.findMany({
         where: { enrollmentId }
       });
       const totalSpent = allAttendance.reduce((sum, a) => sum + (a.feeApplied * a.sessionsDeducted), 0);
 
-      const ledger = await prisma.tuitionLedgerEntry.findUnique({
+      const ledger = await tx.tuitionLedgerEntry.findUnique({
         where: { enrollmentId }
       });
       if (ledger) {
         const balance = ledger.totalPaid - totalSpent;
-        const enroll = await prisma.enrollment.findUnique({ where: { id: enrollmentId } });
+        const enroll = await tx.enrollment.findUnique({ where: { id: enrollmentId } });
         const fee = enroll ? enroll.feePerSession : 0;
         const sessionsRemaining = fee > 0 ? Math.floor(balance / fee) : 0;
 
-        await prisma.tuitionLedgerEntry.update({
+        await tx.tuitionLedgerEntry.update({
           where: { enrollmentId },
           data: {
             totalSpent,
@@ -229,12 +231,12 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
     // 4. Auto-generate TeachingLog
     const hasPresent = records.some(r => r.status === 'present');
     if (finalTeacherId && hasPresent) {
-      const existingLog = await prisma.teachingLog.findFirst({
+      const existingLog = await tx.teachingLog.findFirst({
         where: { staffId: finalTeacherId, date, classId: dbClassId }
       });
 
       if (!existingLog) {
-        await prisma.teachingLog.create({
+        await tx.teachingLog.create({
           data: {
             staffId: finalTeacherId,
             date,
@@ -245,20 +247,23 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
             originalTeacherId: isSubstitute ? (originalTeacherId || cls.teacherId) : null,
             hoursWorked: 1.5,
             source: 'auto',
-            note: isSubstitute ? 'Dạy thay' : 'Dạy chính'
+            note: isSubstitute ? 'Dáº¡y thay' : 'Dáº¡y chÃ­nh'
           }
         });
       }
     }
 
     // 5. Add audit log
-    await prisma.auditLog.create({
+    await tx.auditLog.create({
       data: {
         action: 'SAVE_ATTENDANCE_BATCH',
         entity: 'attendance',
-        details: `Điểm danh lớp ${cls.name} ngày ${date}`,
+        details: `Äiá»ƒm danh lá»›p ${cls.name} ngÃ y ${date}`,
         user: req.user?.name || req.user?.username || 'unknown'
       }
+    });
+
+      return savedRecords;
     });
 
     res.status(201).json(savedRecords);
@@ -268,41 +273,42 @@ attendanceRouter.post('/attendance/batch', async (req, res) => {
 });
 
 // DELETE attendance record
-attendanceRouter.delete('/attendance/:id', async (req, res) => {
+attendanceRouter.delete('/attendance/:id', requireAttendanceRole, async (req, res) => {
   const { id } = req.params;
 
   try {
-    const record = await prisma.attendanceRecord.findUnique({
+    await prisma.$transaction(async (tx) => {
+    const record = await tx.attendanceRecord.findUnique({
       where: { id }
     });
 
     if (!record) {
-      return res.status(404).json({ message: 'Không tìm thấy bản ghi điểm danh' });
+      throw new Error('ATTENDANCE_NOT_FOUND');
     }
 
     const { enrollmentId, sessionId, classId, date } = record;
 
     // Delete the record
-    await prisma.attendanceRecord.delete({
+    await tx.attendanceRecord.delete({
       where: { id }
     });
 
     // Recalculate Tuition Ledger
-    const allAttendance = await prisma.attendanceRecord.findMany({
+    const allAttendance = await tx.attendanceRecord.findMany({
       where: { enrollmentId }
     });
     const totalSpent = allAttendance.reduce((sum, a) => sum + (a.feeApplied * a.sessionsDeducted), 0);
 
-    const ledger = await prisma.tuitionLedgerEntry.findUnique({
+    const ledger = await tx.tuitionLedgerEntry.findUnique({
       where: { enrollmentId }
     });
     if (ledger) {
       const balance = ledger.totalPaid - totalSpent;
-      const enroll = await prisma.enrollment.findUnique({ where: { id: enrollmentId } });
+      const enroll = await tx.enrollment.findUnique({ where: { id: enrollmentId } });
       const fee = enroll ? enroll.feePerSession : 0;
       const sessionsRemaining = fee > 0 ? Math.floor(balance / fee) : 0;
 
-      await prisma.tuitionLedgerEntry.update({
+      await tx.tuitionLedgerEntry.update({
         where: { enrollmentId },
         data: {
           totalSpent,
@@ -314,18 +320,22 @@ attendanceRouter.delete('/attendance/:id', async (req, res) => {
     }
 
     // Cleanup TeachingLog if no more present students
-    const presentCount = await prisma.attendanceRecord.count({
+    const presentCount = await tx.attendanceRecord.count({
       where: { sessionId, status: 'present' }
     });
 
     if (presentCount === 0) {
-      await prisma.teachingLog.deleteMany({
+      await tx.teachingLog.deleteMany({
         where: { sessionId, source: 'auto' }
       });
     }
+    });
 
-    res.json({ success: true, message: 'Xóa điểm danh thành công.' });
+    res.json({ success: true, message: 'XÃ³a Ä‘iá»ƒm danh thÃ nh cÃ´ng.' });
   } catch (error: any) {
+    if (error.message === 'ATTENDANCE_NOT_FOUND') {
+      return res.status(404).json({ message: 'KhÃ´ng tÃ¬m tháº¥y báº£n ghi Ä‘iá»ƒm danh' });
+    }
     res.status(500).json({ message: error.message });
   }
 });

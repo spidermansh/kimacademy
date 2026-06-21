@@ -24,6 +24,8 @@ export default function InventoryManagement() {
   const [categories, setCategories] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
 
   // Search/Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -77,6 +79,19 @@ export default function InventoryManagement() {
   const [mStaffId, setMStaffId] = useState('');
   const [mNote, setMNote] = useState('');
   const [mDate, setMDate] = useState(new Date().toISOString().slice(0, 10));
+  const [mPaymentStatus, setMPaymentStatus] = useState<'unpaid' | 'paid'>('unpaid');
+  const [mPaymentMethod, setMPaymentMethod] = useState('Tiền mặt');
+  const [mPaymentDate, setMPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [mSaleMode, setMSaleMode] = useState<'single' | 'bulk'>('single');
+  const [mClassId, setMClassId] = useState('');
+  const [mSelectedStudentIds, setMSelectedStudentIds] = useState<string[]>([]);
+  const [mStudentQuantities, setMStudentQuantities] = useState<Record<string, number>>({});
+  const [collectingMovement, setCollectingMovement] = useState<any | null>(null);
+  const [collectPaymentMethod, setCollectPaymentMethod] = useState('Tiền mặt');
+  const [collectPaymentDate, setCollectPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [collectNote, setCollectNote] = useState('');
+
+  const inventoryPaymentMethods = ['Tiền mặt', 'Chuyển khoản', 'Momo', 'ZaloPay', 'Khác'];
 
   useEffect(() => {
     fetchInitialData();
@@ -85,7 +100,7 @@ export default function InventoryManagement() {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
-      const [cats, sups, locs, prodItems, stockList, mvList, stds, stf] = await Promise.all([
+      const [cats, sups, locs, prodItems, stockList, mvList, stds, stf, cls, enrollmentList] = await Promise.all([
         api.getInventoryCategories(),
         api.getSuppliers(),
         api.getInventoryLocations(),
@@ -93,7 +108,9 @@ export default function InventoryManagement() {
         api.getInventoryStocks(),
         api.getInventoryMovements(),
         api.getStudents(),
-        api.getStaff()
+        api.getStaff(),
+        api.getClasses(),
+        api.getEnrollments({ isActive: true })
       ]);
 
       setCategories(cats);
@@ -104,6 +121,8 @@ export default function InventoryManagement() {
       setMovements(mvList);
       setStudents(stds);
       setStaff(stf);
+      setClasses(cls);
+      setEnrollments(enrollmentList);
     } catch (err: any) {
       toast.error('Lỗi tải dữ liệu kho', err.message);
     } finally {
@@ -212,6 +231,26 @@ export default function InventoryManagement() {
     }
   };
 
+  const resetMovementForm = () => {
+    setMItemId('');
+    setMVariantId('');
+    setMFromLocationId('');
+    setMToLocationId('');
+    setMQty(1);
+    setMUnitCost(0);
+    setMUnitSalePrice(0);
+    setMStudentId('');
+    setMStaffId('');
+    setMNote('');
+    setMPaymentStatus('unpaid');
+    setMPaymentMethod('Tiền mặt');
+    setMPaymentDate(new Date().toISOString().slice(0, 10));
+    setMSaleMode('single');
+    setMClassId('');
+    setMSelectedStudentIds([]);
+    setMStudentQuantities({});
+  };
+
   // Movements Save (Stock check logic included on Backend, but we capture the response)
   const handleAddMovement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,6 +270,45 @@ export default function InventoryManagement() {
     }
 
     try {
+      if (mType === 'issue_to_student' && mSaleMode === 'bulk') {
+        if (!mClassId) {
+          toast.error('Thiếu lớp học', 'Vui lòng chọn lớp trước khi bán hàng loạt');
+          return;
+        }
+        if (mSelectedStudentIds.length === 0) {
+          toast.error('Chưa chọn học viên', 'Vui lòng chọn ít nhất 1 học viên trong lớp');
+          return;
+        }
+
+        await api.createInventoryMovementsBulk({
+          movementType: mType,
+          classId: mClassId,
+          itemId: mItemId,
+          variantId: mVariantId || undefined,
+          fromLocationId: fromLoc || undefined,
+          students: mSelectedStudentIds.map(studentId => ({
+            studentId,
+            quantity: mStudentQuantities[studentId] || 1
+          })),
+          unitCost: mUnitCost,
+          unitSalePrice: mUnitSalePrice,
+          paymentStatus: mUnitSalePrice > 0 ? mPaymentStatus : undefined,
+          paymentMethod: mPaymentStatus === 'paid' ? mPaymentMethod : undefined,
+          paymentDate: mPaymentStatus === 'paid' ? mPaymentDate : undefined,
+          note: mNote,
+          movementDate: mDate
+        });
+
+        toast.success(
+          'Đã tạo giao dịch hàng loạt',
+          `Đã tạo ${mSelectedStudentIds.length} giao dịch cho lớp đã chọn`
+        );
+        setShowAddMovementModal(false);
+        resetMovementForm();
+        fetchInitialData();
+        return;
+      }
+
       await api.createInventoryMovement({
         movementType: mType,
         itemId: mItemId,
@@ -242,26 +320,49 @@ export default function InventoryManagement() {
         unitSalePrice: mUnitSalePrice,
         relatedStudentId: mStudentId || undefined,
         relatedStaffId: mStaffId || undefined,
+        paymentStatus: mType === 'issue_to_student' && mUnitSalePrice > 0 ? mPaymentStatus : undefined,
+        paymentMethod: mType === 'issue_to_student' && mPaymentStatus === 'paid' ? mPaymentMethod : undefined,
+        paymentDate: mType === 'issue_to_student' && mPaymentStatus === 'paid' ? mPaymentDate : undefined,
         note: mNote,
         movementDate: mDate
       });
 
-      toast.success('Thành công', 'Đã thực hiện giao dịch kho thành công');
+      toast.success(
+        'Thành công',
+        mType === 'issue_to_student' && mPaymentStatus === 'unpaid'
+          ? 'Đã phát hàng và ghi nhận trạng thái chưa thu tiền'
+          : 'Đã thực hiện giao dịch kho thành công'
+      );
       setShowAddMovementModal(false);
-      // Reset form
-      setMItemId('');
-      setMVariantId('');
-      setMFromLocationId('');
-      setMToLocationId('');
-      setMQty(1);
-      setMUnitCost(0);
-      setMUnitSalePrice(0);
-      setMStudentId('');
-      setMStaffId('');
-      setMNote('');
+      resetMovementForm();
       fetchInitialData();
     } catch (err: any) {
       toast.error('Giao dịch thất bại', err.message);
+    }
+  };
+
+  const openCollectPaymentModal = (movement: any) => {
+    setCollectingMovement(movement);
+    setCollectPaymentMethod('Tiền mặt');
+    setCollectPaymentDate(new Date().toISOString().slice(0, 10));
+    setCollectNote('');
+  };
+
+  const handleCollectPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!collectingMovement) return;
+    try {
+      await api.collectInventoryPayment(collectingMovement.id, {
+        paymentDate: collectPaymentDate,
+        paymentMethod: collectPaymentMethod,
+        note: collectNote
+      });
+      toast.success('Đã thu tiền', 'Giao dịch vật tư đã được xác nhận hoàn tất');
+      setCollectingMovement(null);
+      setCollectNote('');
+      fetchInitialData();
+    } catch (err: any) {
+      toast.error('Thu tiền thất bại', err.message);
     }
   };
 
@@ -287,16 +388,29 @@ export default function InventoryManagement() {
     if (mType === 'purchase_in') {
       setMFromLocationId('');
       if (locations.length > 0) setMToLocationId(locations[0].id);
+      setMSaleMode('single');
     } else if (mType === 'issue_to_student' || mType === 'issue_to_staff') {
       if (locations.length > 0) setMFromLocationId(locations[0].id);
       setMToLocationId('');
+      if (mType === 'issue_to_student') {
+        setMPaymentStatus('unpaid');
+        setMPaymentDate(mDate);
+      } else {
+        setMSaleMode('single');
+      }
     } else if (mType === 'transfer') {
       if (locations.length > 1) {
         setMFromLocationId(locations[0].id);
         setMToLocationId(locations[1].id);
       }
+      setMSaleMode('single');
     }
-  }, [mType, locations]);
+  }, [mType, locations, mDate]);
+
+  useEffect(() => {
+    setMSelectedStudentIds([]);
+    setMStudentQuantities({});
+  }, [mClassId]);
 
   // Filters logic
   const filteredStocks = stocks.filter(stock => {
@@ -311,6 +425,74 @@ export default function InventoryManagement() {
 
     return matchesSearch && matchesCategory && matchesLocation;
   });
+
+  const studentsById = new Map(students.map(student => [student.id, student]));
+  const bulkClassEnrollments = enrollments.filter(enrollment =>
+    enrollment.classId === mClassId && enrollment.isActive !== false
+  );
+  const bulkClassStudents = bulkClassEnrollments.map(enrollment => {
+    const student = studentsById.get(enrollment.studentId);
+    return {
+      ...(student || {}),
+      id: enrollment.studentId,
+      name: student?.name || enrollment.studentName,
+      parentPhone: student?.parentPhone || '',
+      className: enrollment.className
+    };
+  });
+  const selectedBulkStudents = bulkClassStudents.filter(student => mSelectedStudentIds.includes(student.id));
+  const bulkTotalQuantity = selectedBulkStudents.reduce((sum, student) => sum + (mStudentQuantities[student.id] || 1), 0);
+  const bulkTotalAmount = bulkTotalQuantity * (mUnitSalePrice || 0);
+  const selectedStock = stocks.find(stock =>
+    stock.itemId === mItemId &&
+    stock.locationId === mFromLocationId &&
+    (!mVariantId || stock.variantId === mVariantId)
+  );
+  const selectedStockQty = selectedStock?.quantityOnHand || 0;
+  const bulkStockShort = mType === 'issue_to_student' && mSaleMode === 'bulk' && bulkTotalQuantity > selectedStockQty;
+  const allBulkStudentsSelected = bulkClassStudents.length > 0 && bulkClassStudents.every(student => mSelectedStudentIds.includes(student.id));
+
+  const pendingInventoryPayments = movements.filter(m =>
+    m.movementType === 'issue_to_student' &&
+    m.paymentStatus === 'unpaid' &&
+    (m.totalAmount || 0) > 0
+  );
+  const pendingInventoryAmount = pendingInventoryPayments.reduce((sum, m) => sum + (Number(m.totalAmount) || 0), 0);
+
+  const toggleBulkStudent = (studentId: string) => {
+    setMSelectedStudentIds(prev => (
+      prev.includes(studentId)
+        ? prev.filter(id => id !== studentId)
+        : [...prev, studentId]
+    ));
+    setMStudentQuantities(prev => ({
+      ...prev,
+      [studentId]: prev[studentId] || 1
+    }));
+  };
+
+  const toggleAllBulkStudents = () => {
+    if (allBulkStudentsSelected) {
+      setMSelectedStudentIds([]);
+      return;
+    }
+    const nextIds = bulkClassStudents.map(student => student.id);
+    setMSelectedStudentIds(nextIds);
+    setMStudentQuantities(prev => {
+      const next = { ...prev };
+      nextIds.forEach(id => {
+        next[id] = next[id] || 1;
+      });
+      return next;
+    });
+  };
+
+  const updateBulkStudentQuantity = (studentId: string, quantity: number) => {
+    setMStudentQuantities(prev => ({
+      ...prev,
+      [studentId]: Math.max(1, Number(quantity) || 1)
+    }));
+  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -496,6 +678,22 @@ export default function InventoryManagement() {
       {/* TAB CONTENT: MOVEMENTS */}
       {activeSubTab === 'movements' && (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-slate-100 bg-amber-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-amber-700">Công nợ vật tư đã phát</p>
+              <p className="text-xs text-amber-800 mt-1">
+                {pendingInventoryPayments.length} giao dịch chưa thu tiền, tổng {formatCurrency(pendingInventoryAmount)}
+              </p>
+            </div>
+            {pendingInventoryPayments.length > 0 && (
+              <button
+                onClick={() => openCollectPaymentModal(pendingInventoryPayments[0])}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black cursor-pointer"
+              >
+                Thu giao dịch đầu tiên
+              </button>
+            )}
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -507,8 +705,10 @@ export default function InventoryManagement() {
                   <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider">Đến kho</th>
                   <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider">Số lượng</th>
                   <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider">Thành tiền</th>
+                  <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider">Thanh toán</th>
                   <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider">Đối tác liên quan</th>
                   <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider">Ghi chú</th>
+                  <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
@@ -545,10 +745,45 @@ export default function InventoryManagement() {
                       <td className="px-6 py-4 font-mono font-bold text-slate-700">
                         {formatCurrency(m.totalAmount || 0)}
                       </td>
+                      <td className="px-6 py-4">
+                        {m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0 ? (
+                          m.paymentStatus === 'unpaid' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl font-black text-[11px] bg-amber-50 text-amber-700 border border-amber-200">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Đã phát - chưa thu
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl font-black text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <Check className="w-3.5 h-3.5" />
+                              Đã thu tiền
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                        {m.paymentStatus === 'paid' && m.paymentDate && (
+                          <div className="mt-1 text-[10px] text-slate-400 font-medium">
+                            {m.paymentDate} · {m.paymentMethod || 'N/A'}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-6 py-4 font-medium text-slate-600">
                         {m.relatedStudent ? `Học viên: ${m.relatedStudent.name}` : m.relatedStaff ? `Nhân viên: ${m.relatedStaff.name}` : '-'}
                       </td>
                       <td className="px-6 py-4 text-slate-500 italic max-w-xs truncate">{m.note || '-'}</td>
+                      <td className="px-6 py-4">
+                        {m.paymentStatus === 'unpaid' && (m.totalAmount || 0) > 0 ? (
+                          <button
+                            onClick={() => openCollectPaymentModal(m)}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <DollarSign className="w-3.5 h-3.5" />
+                            Thu tiền
+                          </button>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -711,12 +946,12 @@ export default function InventoryManagement() {
       {/* ADD CATEGORY MODAL */}
       {showAddCategoryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center flex-shrink-0">
               <h3 className="font-bold text-sm">Tạo nhóm vật tư mới</h3>
               <button onClick={() => setShowAddCategoryModal(false)} className="text-slate-300 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleAddCategory} className="p-6 space-y-4">
+            <form onSubmit={handleAddCategory} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tên nhóm vật tư *</label>
                 <input type="text" required value={categoryName} onChange={e => setCategoryName(e.target.value)} placeholder="Ví dụ: Giáo trình, Áo phông" className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm" />
@@ -741,12 +976,12 @@ export default function InventoryManagement() {
       {/* ADD LOCATION MODAL */}
       {showAddLocationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center flex-shrink-0">
               <h3 className="font-bold text-sm">Thêm kho / vị trí mới</h3>
               <button onClick={() => setShowAddLocationModal(false)} className="text-slate-300 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleAddLocation} className="p-6 space-y-4">
+            <form onSubmit={handleAddLocation} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tên kho hàng *</label>
                 <input type="text" required value={locationName} onChange={e => setLocationName(e.target.value)} placeholder="Ví dụ: Kho tầng 1, Tủ sách A" className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm" />
@@ -767,12 +1002,12 @@ export default function InventoryManagement() {
       {/* ADD SUPPLIER MODAL */}
       {showAddSupplierModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center flex-shrink-0">
               <h3 className="font-bold text-sm">Thêm nhà cung cấp mới</h3>
               <button onClick={() => setShowAddSupplierModal(false)} className="text-slate-300 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleAddSupplier} className="p-6 space-y-4">
+            <form onSubmit={handleAddSupplier} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tên đối tác nhà cung cấp *</label>
                 <input type="text" required value={supplierName} onChange={e => setSupplierName(e.target.value)} placeholder="Ví dụ: NXB Giáo Dục, Công ty May Đồng Phục" className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm" />
@@ -807,12 +1042,12 @@ export default function InventoryManagement() {
       {/* ADD ITEM MODAL */}
       {showAddItemModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center flex-shrink-0">
               <h3 className="font-bold text-sm">Thêm sản phẩm / mặt hàng mới</h3>
               <button onClick={() => setShowAddItemModal(false)} className="text-slate-300 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleAddItem} className="p-6 space-y-4">
+            <form onSubmit={handleAddItem} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nhóm vật tư *</label>
@@ -873,15 +1108,65 @@ export default function InventoryManagement() {
         </div>
       )}
 
+      {/* COLLECT INVENTORY PAYMENT MODAL */}
+      {collectingMovement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 bg-gradient-to-r from-emerald-700 to-emerald-900 text-white flex justify-between items-center flex-shrink-0">
+              <h3 className="font-bold text-sm">Thu tiền vật tư đã phát</h3>
+              <button onClick={() => setCollectingMovement(null)} className="text-emerald-100 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleCollectPayment} className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4 space-y-2">
+                <p className="text-xs font-bold text-slate-500 uppercase">Giao dịch cần thu</p>
+                <p className="font-black text-slate-900">{collectingMovement.item?.name}</p>
+                <p className="text-sm text-slate-600">
+                  Học viên: <span className="font-bold">{collectingMovement.relatedStudent?.name || '-'}</span>
+                </p>
+                <p className="text-sm text-slate-600">
+                  Số lượng: <span className="font-bold">{collectingMovement.quantity} {collectingMovement.item?.unit}</span>
+                </p>
+                <p className="text-xl font-black text-emerald-700">{formatCurrency(collectingMovement.totalAmount || 0)}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ngày thu tiền *</label>
+                  <input type="date" required value={collectPaymentDate} onChange={e => setCollectPaymentDate(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-emerald-500 text-sm font-mono" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hình thức thu *</label>
+                  <select value={collectPaymentMethod} onChange={e => setCollectPaymentMethod(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-emerald-500 text-sm">
+                    {inventoryPaymentMethods.map(method => (
+                      <option key={method} value={method}>{method}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ghi chú thu tiền</label>
+                <textarea rows={2} value={collectNote} onChange={e => setCollectNote(e.target.value)} placeholder="Ví dụ: Phụ huynh chuyển khoản sau khi nhận sách..." className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-emerald-500 text-sm" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <button type="button" onClick={() => setCollectingMovement(null)} className="px-4 py-2 border rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-50">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-700 inline-flex items-center gap-1.5">
+                  <Check className="w-4 h-4" />
+                  Xác nhận đã thu
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* CREATE MOVEMENT MODAL (NHẬP/XUẤT KHO) */}
       {showAddMovementModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex justify-between items-center flex-shrink-0">
               <h3 className="font-bold text-sm">Giao dịch kho hàng (Nhập / Xuất)</h3>
               <button onClick={() => setShowAddMovementModal(false)} className="text-slate-300 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleAddMovement} className="p-6 space-y-4">
+            <form onSubmit={handleAddMovement} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Loại nghiệp vụ kho *</label>
@@ -943,8 +1228,18 @@ export default function InventoryManagement() {
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số lượng giao dịch *</label>
-                  <input type="number" required min={1} value={mQty} onChange={e => setMQty(Number(e.target.value))} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm" />
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    {mType === 'issue_to_student' && mSaleMode === 'bulk' ? 'SL mặc định' : 'Số lượng giao dịch *'}
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={mQty}
+                    onChange={e => setMQty(Number(e.target.value))}
+                    disabled={mType === 'issue_to_student' && mSaleMode === 'bulk'}
+                    className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Giá vốn nhập (VND)</label>
@@ -958,17 +1253,188 @@ export default function InventoryManagement() {
 
               {/* Related Student (only if issue_to_student) */}
               {mType === 'issue_to_student' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Học viên mua hàng *</label>
-                  <select required value={mStudentId} onChange={e => setMStudentId(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm">
-                    <option value="">-- Chọn học viên --</option>
-                    {students.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.parentPhone})</option>
-                    ))}
-                  </select>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Chế độ bán/phát cho học viên *</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setMSaleMode('single')}
+                        className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
+                          mSaleMode === 'single'
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        Bán 1 học viên
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMSaleMode('bulk')}
+                        className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
+                          mSaleMode === 'bulk'
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        Bán hàng loạt theo lớp
+                      </button>
+                    </div>
+                  </div>
+
+                  {mSaleMode === 'single' ? (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Học viên mua hàng *</label>
+                      <select required value={mStudentId} onChange={e => setMStudentId(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm">
+                        <option value="">-- Chọn học viên --</option>
+                        {students.map(s => (
+                          <option key={s.id} value={s.id}>{s.name} ({s.parentPhone})</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Lọc học viên theo lớp *</label>
+                        <select value={mClassId} onChange={e => setMClassId(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm bg-white">
+                          <option value="">-- Chọn lớp --</option>
+                          {classes.filter(c => c.status !== 'inactive').map(c => (
+                            <option key={c.id} value={c.id}>{c.name} ({c.studentCount || 0} học viên)</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {mClassId && (
+                        <>
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={toggleAllBulkStudents}
+                              className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 rounded-xl text-xs font-black cursor-pointer"
+                            >
+                              {allBulkStudentsSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả học viên'}
+                            </button>
+                            <p className={`text-xs font-bold ${bulkStockShort ? 'text-rose-600' : 'text-slate-500'}`}>
+                              Đã chọn {mSelectedStudentIds.length}/{bulkClassStudents.length} học viên · Cần xuất {bulkTotalQuantity} · Tồn {selectedStockQty}
+                            </p>
+                          </div>
+
+                          <div className="max-h-56 overflow-auto rounded-2xl border border-slate-200 bg-white">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50 sticky top-0">
+                                <tr>
+                                  <th className="px-3 py-2 font-black text-slate-400 uppercase">Chọn</th>
+                                  <th className="px-3 py-2 font-black text-slate-400 uppercase">Học viên</th>
+                                  <th className="px-3 py-2 font-black text-slate-400 uppercase">Phụ huynh</th>
+                                  <th className="px-3 py-2 font-black text-slate-400 uppercase w-24">SL</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {bulkClassStudents.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4} className="px-3 py-6 text-center text-slate-400 font-bold">
+                                      Lớp này chưa có học viên đang học.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  bulkClassStudents.map(student => {
+                                    const checked = mSelectedStudentIds.includes(student.id);
+                                    return (
+                                      <tr key={student.id} className={checked ? 'bg-indigo-50/60' : ''}>
+                                        <td className="px-3 py-2">
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleBulkStudent(student.id)}
+                                            className="w-4 h-4 accent-indigo-600"
+                                          />
+                                        </td>
+                                        <td className="px-3 py-2 font-bold text-slate-700">
+                                          {student.name}
+                                          <div className="text-[10px] text-slate-400 font-mono">{student.code || student.id.slice(0, 8)}</div>
+                                        </td>
+                                        <td className="px-3 py-2 text-slate-500">{student.parentPhone || '-'}</td>
+                                        <td className="px-3 py-2">
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            value={mStudentQuantities[student.id] || 1}
+                                            onChange={e => updateBulkStudentQuantity(student.id, Number(e.target.value))}
+                                            disabled={!checked}
+                                            className="w-20 px-2 py-1 border rounded-lg text-xs font-mono disabled:bg-slate-50 disabled:text-slate-400"
+                                          />
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className={`rounded-2xl p-3 border ${bulkStockShort ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-white border-indigo-100 text-slate-700'}`}>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-bold">
+                              <span>Học viên: {mSelectedStudentIds.length}</span>
+                              <span>Tổng SL: {bulkTotalQuantity}</span>
+                              <span>Tổng tiền: {formatCurrency(bulkTotalAmount)}</span>
+                            </div>
+                            {bulkStockShort && (
+                              <p className="text-xs font-bold mt-2">Tồn kho không đủ cho số lượng đã chọn. Giảm số lượng hoặc nhập thêm hàng trước khi xác nhận.</p>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <p className="text-[10px] text-indigo-500 mt-1 font-bold">
-                    ℹ️ Doanh thu bán vật tư sẽ tự động ghi nhận vào báo cáo Doanh thu khác (RevenueOther) và không gộp vào học phí.
+                    Doanh thu vật tư chỉ ghi nhận khi trạng thái là "Đã thu tiền".
                   </p>
+                  <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3 space-y-3">
+                    <label className="block text-xs font-black text-amber-700 uppercase">Trạng thái thu tiền</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setMPaymentStatus('unpaid')}
+                        className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
+                          mPaymentStatus === 'unpaid'
+                            ? 'bg-amber-600 text-white border-amber-600'
+                            : 'bg-white text-amber-700 border-amber-200'
+                        }`}
+                      >
+                        Đã phát - chưa thu tiền
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMPaymentStatus('paid');
+                          setMPaymentDate(mDate);
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
+                          mPaymentStatus === 'paid'
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-emerald-700 border-emerald-200'
+                        }`}
+                      >
+                        Thu tiền ngay
+                      </button>
+                    </div>
+                    {mPaymentStatus === 'paid' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Ngày thu tiền</label>
+                          <input type="date" required value={mPaymentDate} onChange={e => setMPaymentDate(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-emerald-500 text-sm font-mono bg-white" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Hình thức thu</label>
+                          <select value={mPaymentMethod} onChange={e => setMPaymentMethod(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-emerald-500 text-sm bg-white">
+                            {inventoryPaymentMethods.map(method => (
+                              <option key={method} value={method}>{method}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -992,7 +1458,13 @@ export default function InventoryManagement() {
 
               <div className="flex justify-end gap-2 pt-2 border-t">
                 <button type="button" onClick={() => setShowAddMovementModal(false)} className="px-4 py-2 border rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-50">Hủy</button>
-                <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-indigo-700">Xác nhận nghiệp vụ</button>
+                <button
+                  type="submit"
+                  disabled={mType === 'issue_to_student' && mSaleMode === 'bulk' && (bulkStockShort || mSelectedStudentIds.length === 0)}
+                  className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed"
+                >
+                  Xác nhận nghiệp vụ
+                </button>
               </div>
             </form>
           </div>

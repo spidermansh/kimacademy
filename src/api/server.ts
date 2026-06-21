@@ -2,7 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import jwt from 'jsonwebtoken';
+import { getCorsOrigins, isProduction } from './config/env';
 
 // Import routers
 import { authRouter } from './routes/auth';
@@ -24,14 +24,23 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3021;
-const JWT_SECRET = process.env.JWT_SECRET || 'kim_academy_super_secret_key';
+const corsOrigins = getCorsOrigins();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Middlewares
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  const allowAnyDevOrigin = !isProduction && corsOrigins.length === 0;
+  const isAllowedOrigin = origin && (corsOrigins.includes(origin) || corsOrigins.includes('*'));
+
+  if (allowAnyDevOrigin) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  } else if (isAllowedOrigin) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Vary', 'Origin');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') {
@@ -48,6 +57,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: {
+        userId?: string;
         username: string;
         role: string;
         name: string;
@@ -78,6 +88,12 @@ app.use('/api', inventoryRouter);
 app.use('/api', notificationsRouter);
 app.use('/api', backupRouter);
 
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    message: `Không tìm thấy API ${req.method} ${req.originalUrl}. Vui lòng kiểm tra backend đã cập nhật và restart đúng phiên bản.`,
+  });
+});
+
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../../dist')));
@@ -88,6 +104,12 @@ if (process.env.NODE_ENV === 'production') {
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({
+      message: 'Dữ liệu gửi lên không đúng định dạng JSON',
+    });
+  }
+
   console.error('Unhandled API Error:', err);
   res.status(500).json({
     message: err.message || 'Đã xảy ra lỗi hệ thống nghiêm trọng',

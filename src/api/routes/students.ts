@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { generateUniqueCode } from '../utils/codes';
 
 export const studentsRouter = Router();
 
 studentsRouter.use(authenticateToken);
+const requireAcademicRole = requireRole(['admin', 'staff', 'accountant']);
 
 // GET all students (formatted for V1 frontend)
 studentsRouter.get('/students', async (req, res) => {
@@ -26,6 +28,7 @@ studentsRouter.get('/students', async (req, res) => {
       const primaryContact = s.guardianContacts.find(c => c.isPrimary) || s.guardianContacts[0];
       return {
         id: s.id,
+        code: s.code,
         name: s.name,
         vietnameseName: s.vietnameseName,
         englishName: s.englishName,
@@ -50,64 +53,70 @@ studentsRouter.get('/students', async (req, res) => {
 });
 
 // POST create student
-studentsRouter.post('/students', async (req, res) => {
+studentsRouter.post('/students', requireAcademicRole, async (req, res) => {
   const data = req.body;
   try {
-    const student = await prisma.student.create({
-      data: {
-        name: data.name,
-        vietnameseName: data.vietnameseName || data.name,
-        englishName: data.englishName || '',
-        gender: data.gender || null,
-        birthDate: data.birthYear ? `${data.birthYear}-01-01` : null,
-        status: data.status || 'active',
-        enrollDate: data.enrollDate || new Date().toISOString().slice(0, 10),
-        createdBy: req.user?.name || req.user?.username || 'unknown'
-      }
-    });
-
-    if (data.parentPhone) {
-      await prisma.guardianContact.create({
+    const code = await generateUniqueCode(prisma.student, 'HV', data.code);
+    const student = await prisma.$transaction(async (tx) => {
+      const createdStudent = await tx.student.create({
         data: {
-          studentId: student.id,
-          phone: data.parentPhone,
-          name: data.parentName || (data.name + ' Parent'),
-          isPrimary: true,
-          relationship: 'parent'
+          code,
+          name: data.name,
+          vietnameseName: data.vietnameseName || data.name,
+          englishName: data.englishName || '',
+          gender: data.gender || null,
+          birthDate: data.birthYear ? `${data.birthYear}-01-01` : null,
+          status: data.status || 'active',
+          enrollDate: data.enrollDate || new Date().toISOString().slice(0, 10),
+          createdBy: req.user?.name || req.user?.username || 'unknown'
         }
       });
-    }
 
-    if (data.className) {
-      const cls = await prisma.class.findUnique({
-        where: { name: data.className }
-      });
-      if (cls) {
-        const fee = data.feePerSession !== undefined ? Number(data.feePerSession) : cls.defaultFeePerSession;
-        const enrollment = await prisma.enrollment.create({
+      if (data.parentPhone) {
+        await tx.guardianContact.create({
           data: {
-            studentId: student.id,
-            classId: cls.id,
-            feePerSession: fee,
-            startDate: data.enrollDate || new Date().toISOString().slice(0, 10),
-            isActive: true,
-            createdBy: req.user?.name || req.user?.username || 'unknown',
-            feeHistory: '[]'
-          }
-        });
-
-        await prisma.tuitionLedgerEntry.create({
-          data: {
-            studentId: student.id,
-            enrollmentId: enrollment.id,
-            totalPaid: 0,
-            totalSpent: 0,
-            balance: 0,
-            sessionsRemaining: 0
+            studentId: createdStudent.id,
+            phone: data.parentPhone,
+            name: data.parentName || (data.name + ' Parent'),
+            isPrimary: true,
+            relationship: 'parent'
           }
         });
       }
-    }
+
+      if (data.className) {
+        const cls = await tx.class.findUnique({
+          where: { name: data.className }
+        });
+        if (cls) {
+          const fee = data.feePerSession !== undefined ? Number(data.feePerSession) : cls.defaultFeePerSession;
+          const enrollment = await tx.enrollment.create({
+            data: {
+              studentId: createdStudent.id,
+              classId: cls.id,
+              feePerSession: fee,
+              startDate: data.enrollDate || new Date().toISOString().slice(0, 10),
+              isActive: true,
+              createdBy: req.user?.name || req.user?.username || 'unknown',
+              feeHistory: '[]'
+            }
+          });
+
+          await tx.tuitionLedgerEntry.create({
+            data: {
+              studentId: createdStudent.id,
+              enrollmentId: enrollment.id,
+              totalPaid: 0,
+              totalSpent: 0,
+              balance: 0,
+              sessionsRemaining: 0
+            }
+          });
+        }
+      }
+
+      return createdStudent;
+    });
 
     res.status(201).json(student);
   } catch (error: any) {
@@ -116,7 +125,7 @@ studentsRouter.post('/students', async (req, res) => {
 });
 
 // PUT update student
-studentsRouter.put('/students/:id', async (req, res) => {
+studentsRouter.put('/students/:id', requireAcademicRole, async (req, res) => {
   const { id } = req.params;
   const data = req.body;
 
@@ -194,7 +203,7 @@ studentsRouter.put('/students/:id', async (req, res) => {
 });
 
 // DELETE student (soft delete by setting status='left' if financial records exist)
-studentsRouter.delete('/students/:id', async (req, res) => {
+studentsRouter.delete('/students/:id', requireAcademicRole, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -244,7 +253,7 @@ studentsRouter.delete('/students/:id', async (req, res) => {
 });
 
 // Batch imports (legacy endpoint support)
-studentsRouter.post('/students/batch', async (req, res) => {
+studentsRouter.post('/students/batch', requireAcademicRole, async (req, res) => {
   const { students } = req.body;
   if (!Array.isArray(students)) {
     return res.status(400).json({ message: 'Dữ liệu danh sách không hợp lệ' });
@@ -253,62 +262,68 @@ studentsRouter.post('/students/batch', async (req, res) => {
   const results: any[] = [];
   try {
     for (const data of students) {
+      const code = await generateUniqueCode(prisma.student, 'HV', data.code);
       // Find or create student
-      const student = await prisma.student.create({
-        data: {
-          name: data.name,
-          vietnameseName: data.vietnameseName || data.name,
-          englishName: data.englishName || '',
-          gender: data.gender || null,
-          birthDate: data.birthYear ? `${data.birthYear}-01-01` : null,
-          status: data.status || 'active',
-          enrollDate: data.enrollDate || new Date().toISOString().slice(0, 10),
-          createdBy: req.user?.name || req.user?.username || 'import'
-        }
-      });
-
-      if (data.parentPhone) {
-        await prisma.guardianContact.create({
+      const student = await prisma.$transaction(async (tx) => {
+        const createdStudent = await tx.student.create({
           data: {
-            studentId: student.id,
-            phone: data.parentPhone,
-            name: data.parentName || '',
-            isPrimary: true,
-            relationship: 'parent'
+            code,
+            name: data.name,
+            vietnameseName: data.vietnameseName || data.name,
+            englishName: data.englishName || '',
+            gender: data.gender || null,
+            birthDate: data.birthYear ? `${data.birthYear}-01-01` : null,
+            status: data.status || 'active',
+            enrollDate: data.enrollDate || new Date().toISOString().slice(0, 10),
+            createdBy: req.user?.name || req.user?.username || 'import'
           }
         });
-      }
 
-      if (data.className) {
-        const cls = await prisma.class.findUnique({
-          where: { name: data.className }
-        });
-        if (cls) {
-          const fee = data.feePerSession !== undefined ? Number(data.feePerSession) : cls.defaultFeePerSession;
-          const enrollment = await prisma.enrollment.create({
+        if (data.parentPhone) {
+          await tx.guardianContact.create({
             data: {
-              studentId: student.id,
-              classId: cls.id,
-              feePerSession: fee,
-              startDate: data.enrollDate || new Date().toISOString().slice(0, 10),
-              isActive: true,
-              createdBy: req.user?.name || req.user?.username || 'import',
-              feeHistory: '[]'
-            }
-          });
-
-          await prisma.tuitionLedgerEntry.create({
-            data: {
-              studentId: student.id,
-              enrollmentId: enrollment.id,
-              totalPaid: 0,
-              totalSpent: 0,
-              balance: 0,
-              sessionsRemaining: 0
+              studentId: createdStudent.id,
+              phone: data.parentPhone,
+              name: data.parentName || '',
+              isPrimary: true,
+              relationship: 'parent'
             }
           });
         }
-      }
+
+        if (data.className) {
+          const cls = await tx.class.findUnique({
+            where: { name: data.className }
+          });
+          if (cls) {
+            const fee = data.feePerSession !== undefined ? Number(data.feePerSession) : cls.defaultFeePerSession;
+            const enrollment = await tx.enrollment.create({
+              data: {
+                studentId: createdStudent.id,
+                classId: cls.id,
+                feePerSession: fee,
+                startDate: data.enrollDate || new Date().toISOString().slice(0, 10),
+                isActive: true,
+                createdBy: req.user?.name || req.user?.username || 'import',
+                feeHistory: '[]'
+              }
+            });
+
+            await tx.tuitionLedgerEntry.create({
+              data: {
+                studentId: createdStudent.id,
+                enrollmentId: enrollment.id,
+                totalPaid: 0,
+                totalSpent: 0,
+                balance: 0,
+                sessionsRemaining: 0
+              }
+            });
+          }
+        }
+
+        return createdStudent;
+      });
 
       results.push(student);
     }

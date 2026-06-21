@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
-import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth';
+import { generateUniqueCode } from '../utils/codes';
 
 export const payrollRouter = Router();
 
 payrollRouter.use(authenticateToken);
+const requirePayrollRole = requireRole(['admin', 'staff', 'accountant']);
 
 // Helper to get system parameters with default fallback
 async function getParameter(key: string, defaultValue: any): Promise<any> {
@@ -55,8 +57,10 @@ payrollRouter.post('/staff', requireAdmin, async (req, res) => {
       otherMonthlyAllowance: Number(data.otherMonthlyAllowance || 0)
     }];
 
+    const code = await generateUniqueCode(prisma.staffMember, 'NV', data.code);
     const created = await prisma.staffMember.create({
       data: {
+        code,
         name: data.name,
         role: data.role,
         phone: data.phone || null,
@@ -294,7 +298,7 @@ payrollRouter.get('/teaching-logs', async (req, res) => {
 });
 
 // POST create manual teaching log
-payrollRouter.post('/teaching-logs', async (req, res) => {
+payrollRouter.post('/teaching-logs', requirePayrollRole, async (req, res) => {
   const data = req.body;
   if (!data.staffId || !data.date || !data.classId) {
     return res.status(400).json({ message: 'Thiếu thông tin chấm công' });
@@ -321,7 +325,7 @@ payrollRouter.post('/teaching-logs', async (req, res) => {
 });
 
 // DELETE teaching log
-payrollRouter.delete('/teaching-logs/:id', async (req, res) => {
+payrollRouter.delete('/teaching-logs/:id', requirePayrollRole, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.teachingLog.delete({ where: { id } });
@@ -372,7 +376,7 @@ payrollRouter.get('/salary-advances', async (req, res) => {
 });
 
 // POST create salary advance
-payrollRouter.post('/salary-advances', async (req, res) => {
+payrollRouter.post('/salary-advances', requirePayrollRole, async (req, res) => {
   const data = req.body;
   if (!data.staffId || !data.amount || !data.date) {
     return res.status(400).json({ message: 'Thiếu thông tin tạm ứng' });
@@ -396,7 +400,7 @@ payrollRouter.post('/salary-advances', async (req, res) => {
 });
 
 // PUT update salary advance
-payrollRouter.put('/salary-advances/:id', async (req, res) => {
+payrollRouter.put('/salary-advances/:id', requirePayrollRole, async (req, res) => {
   const { id } = req.params;
   const data = req.body;
 
@@ -417,7 +421,7 @@ payrollRouter.put('/salary-advances/:id', async (req, res) => {
 });
 
 // DELETE salary advance
-payrollRouter.delete('/salary-advances/:id', async (req, res) => {
+payrollRouter.delete('/salary-advances/:id', requirePayrollRole, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.salaryAdvance.delete({ where: { id } });

@@ -12,6 +12,15 @@ usersRouter.use(requireAdmin);
 usersRouter.get('/users', async (req, res) => {
   try {
     const list = await prisma.user.findMany({
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        role: true,
+        staffId: true,
+        createdAt: true,
+        updatedAt: true
+      },
       orderBy: { createdAt: 'desc' }
     });
     res.json(list);
@@ -44,7 +53,8 @@ usersRouter.post('/users', async (req, res) => {
       }
     });
 
-    res.status(201).json(created);
+    const { password: _password, ...safeUser } = created;
+    res.status(201).json(safeUser);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -82,7 +92,8 @@ usersRouter.put('/users/:id', async (req, res) => {
       data
     });
 
-    res.json(updated);
+    const { password: _password, ...safeUser } = updated;
+    res.json(safeUser);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

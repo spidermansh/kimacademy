@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 
 export const classesRouter = Router();
 
 classesRouter.use(authenticateToken);
+const requireAcademicRole = requireRole(['admin', 'staff', 'accountant']);
 
 // Helper to format class response consistently with Frontend interface Class
 async function formatClass(c: any, staffMap?: Map<string, string>) {
@@ -71,7 +72,7 @@ classesRouter.get('/classes', async (req, res) => {
 });
 
 // POST create class
-classesRouter.post('/classes', async (req, res) => {
+classesRouter.post('/classes', requireAcademicRole, async (req, res) => {
   const data = req.body;
   
   if (!data.name || !data.teacherId) {
@@ -123,7 +124,7 @@ classesRouter.post('/classes', async (req, res) => {
 });
 
 // PUT update class
-classesRouter.put('/classes/:id', async (req, res) => {
+classesRouter.put('/classes/:id', requireAcademicRole, async (req, res) => {
   const { id } = req.params;
   const data = req.body;
 
@@ -207,7 +208,7 @@ classesRouter.put('/classes/:id', async (req, res) => {
 });
 
 // DELETE class
-classesRouter.delete('/classes/:id', async (req, res) => {
+classesRouter.delete('/classes/:id', requireAcademicRole, async (req, res) => {
   const { id } = req.params;
 
   try {

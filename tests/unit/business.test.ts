@@ -32,6 +32,7 @@ async function cleanDatabase() {
     'Notification',
     'InventoryStock',
     'InventoryMovement',
+    'InventorySaleBatch',
     'InventoryVariant',
     'InventoryItem',
     'InventoryCategory',
@@ -757,7 +758,7 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
       }
     };
 
-    await updateFeeRoute!.route.stack[0].handle(mockReq, mockRes, () => {});
+    await updateFeeRoute!.route.stack[updateFeeRoute!.route.stack.length - 1].handle(mockReq, mockRes, () => {});
     expect(responseStatus).toBe(200);
 
     // Assert:
@@ -886,7 +887,7 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
       }
     };
 
-    await updateFeeRoute!.route.stack[0].handle(mockReq, mockRes, () => {});
+    await updateFeeRoute!.route.stack[updateFeeRoute!.route.stack.length - 1].handle(mockReq, mockRes, () => {});
     expect(responseStatus).toBe(200);
 
     // Assert:

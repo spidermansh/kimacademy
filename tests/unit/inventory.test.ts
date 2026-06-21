@@ -30,6 +30,7 @@ async function cleanDatabase() {
     'Notification',
     'InventoryStock',
     'InventoryMovement',
+    'InventorySaleBatch',
     'InventoryVariant',
     'InventoryLocation',
     'InventoryItem',
@@ -260,6 +261,222 @@ describe('Kim Academy v2 - Phase 4B Inventory Business Test Cases', () => {
       where: { studentId: student.id },
     });
     expect(txs.length).toBe(0);
+  }, 10000);
+
+  it('21b. should issue inventory to student before collecting payment', async () => {
+    const cat = await InventoryService.createCategory({
+      name: 'Sách',
+      createdBy: 'admin',
+    });
+    const item = await InventoryService.createItem({
+      categoryId: cat.id,
+      code: 'BK-STARTER-2026',
+      name: 'Giáo trình Starters 1 (Bản in 2026)',
+      unit: 'cuốn',
+      itemType: 'sellable',
+      createdBy: 'admin',
+    });
+    const student = await prisma.student.create({
+      data: {
+        code: 'STD-INV-DEFERRED',
+        name: 'Học viên nhận sách trước',
+        vietnameseName: 'Học viên nhận sách trước',
+        englishName: 'Deferred Book',
+        createdBy: 'admin',
+      },
+    });
+
+    await InventoryService.purchaseIn({
+      itemId: item.id,
+      locationId,
+      quantity: 3,
+      unitCost: 80000,
+      createdBy: 'admin',
+    });
+
+    const movement = await InventoryService.issueOut({
+      movementType: 'issue_to_student',
+      itemId: item.id,
+      locationId,
+      quantity: 1,
+      unitSalePrice: 150000,
+      paymentStatus: 'unpaid',
+      relatedStudentId: student.id,
+      createdBy: 'admin',
+    });
+
+    const stock = await prisma.inventoryStock.findFirst({
+      where: { itemId: item.id, locationId },
+    });
+    expect(stock?.quantityOnHand).toBe(2);
+    expect(movement.paymentStatus).toBe('unpaid');
+    expect(movement.relatedRevenueOtherId).toBeNull();
+
+    const revCount = await prisma.revenueOther.count({ where: { studentId: student.id } });
+    expect(revCount).toBe(0);
+  });
+
+  it('21c. should collect payment later and complete issued inventory transaction', async () => {
+    const cat = await InventoryService.createCategory({
+      name: 'Sách',
+      createdBy: 'admin',
+    });
+    const item = await InventoryService.createItem({
+      categoryId: cat.id,
+      code: 'BK-STARTER-2026',
+      name: 'Giáo trình Starters 1 (Bản in 2026)',
+      unit: 'cuốn',
+      itemType: 'sellable',
+      createdBy: 'admin',
+    });
+    const student = await prisma.student.create({
+      data: {
+        code: 'STD-INV-COLLECT',
+        name: 'Học viên trả tiền sau',
+        vietnameseName: 'Học viên trả tiền sau',
+        englishName: 'Collect Later',
+        createdBy: 'admin',
+      },
+    });
+
+    await InventoryService.purchaseIn({
+      itemId: item.id,
+      locationId,
+      quantity: 3,
+      unitCost: 80000,
+      createdBy: 'admin',
+    });
+
+    const movement = await InventoryService.issueOut({
+      movementType: 'issue_to_student',
+      itemId: item.id,
+      locationId,
+      quantity: 1,
+      unitSalePrice: 150000,
+      paymentStatus: 'unpaid',
+      relatedStudentId: student.id,
+      createdBy: 'admin',
+    });
+
+    const completed = await InventoryService.collectInventoryPayment({
+      movementId: movement.id,
+      paymentDate: '2026-06-21',
+      paymentMethod: 'Chuyển khoản',
+      note: 'Phụ huynh chuyển khoản sau khi nhận sách',
+      createdBy: 'admin',
+    });
+
+    expect(completed.paymentStatus).toBe('paid');
+    expect(completed.relatedRevenueOtherId).toBeTruthy();
+
+    const rev = await prisma.revenueOther.findUnique({
+      where: { id: completed.relatedRevenueOtherId! },
+    });
+    expect(rev?.amount).toBe(150000);
+    expect(rev?.paymentDate).toBe('2026-06-21');
+
+    const tuitionTxCount = await prisma.tuitionTransaction.count({ where: { studentId: student.id } });
+    expect(tuitionTxCount).toBe(0);
+  }, 10000);
+
+  it('21d. should issue inventory in bulk to selected students in a class', async () => {
+    const teacher = await prisma.staffMember.create({
+      data: {
+        code: 'TCH-BULK-01',
+        name: 'Giáo viên Bulk',
+        role: 'teacher',
+        startDate: '2026-06-01',
+      },
+    });
+    const cls = await prisma.class.create({
+      data: {
+        code: 'CLS-BULK-01',
+        name: 'Starters Bulk',
+        teacherId: teacher.id,
+        defaultFeePerSession: 100000,
+        scheduleDays: '[]',
+      },
+    });
+    const students = [];
+    for (let i = 1; i <= 2; i++) {
+      const student = await prisma.student.create({
+        data: {
+          code: `STD-BULK-${i}`,
+          name: `Học viên Bulk ${i}`,
+          vietnameseName: `Học viên Bulk ${i}`,
+          englishName: `Bulk ${i}`,
+          createdBy: 'admin',
+        },
+      });
+      students.push(student);
+      const enrollment = await prisma.enrollment.create({
+        data: {
+          studentId: student.id,
+          classId: cls.id,
+          feePerSession: 100000,
+          startDate: '2026-06-01',
+          createdBy: 'admin',
+          feeHistory: '[]',
+        },
+      });
+      await prisma.tuitionLedgerEntry.create({
+        data: {
+          studentId: student.id,
+          enrollmentId: enrollment.id,
+        },
+      });
+    }
+
+    const cat = await InventoryService.createCategory({
+      name: 'Sách',
+      createdBy: 'admin',
+    });
+    const item = await InventoryService.createItem({
+      categoryId: cat.id,
+      code: 'BK-BULK-STARTER',
+      name: 'Giáo trình Starters 1',
+      unit: 'cuốn',
+      itemType: 'sellable',
+      createdBy: 'admin',
+    });
+
+    await InventoryService.purchaseIn({
+      itemId: item.id,
+      locationId,
+      quantity: 10,
+      unitCost: 80000,
+      createdBy: 'admin',
+    });
+
+    const result = await InventoryService.bulkIssueToClass({
+      classId: cls.id,
+      itemId: item.id,
+      locationId,
+      students: students.map(student => ({ studentId: student.id, quantity: 1 })),
+      unitCost: 80000,
+      unitSalePrice: 150000,
+      paymentStatus: 'unpaid',
+      movementDate: '2026-06-21',
+      note: 'Phát sách hàng loạt theo lớp',
+      createdBy: 'admin',
+    });
+
+    expect(result.batch.totalStudents).toBe(2);
+    expect(result.batch.totalQuantity).toBe(2);
+    expect(result.batch.totalAmount).toBe(300000);
+    expect(result.movements.length).toBe(2);
+    expect(result.movements.every(m => m.paymentStatus === 'unpaid')).toBe(true);
+    expect(result.movements.every(m => m.saleBatchId === result.batch.id)).toBe(true);
+
+    const stock = await prisma.inventoryStock.findFirst({
+      where: { itemId: item.id, locationId },
+    });
+    expect(stock?.quantityOnHand).toBe(8);
+
+    const revCount = await prisma.revenueOther.count({
+      where: { studentId: { in: students.map(student => student.id) } },
+    });
+    expect(revCount).toBe(0);
   });
 
   // 22. Xuất văn phòng phẩm cho nhân viên → tồn kho giảm, không tạo học phí

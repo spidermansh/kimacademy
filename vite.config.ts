@@ -4,6 +4,9 @@ import path from 'path';
 import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
+  const apiProxyTarget = process.env.API_PROXY_TARGET || 'http://localhost:3021';
+  const devPort = Number(process.env.VITE_DEV_PORT || 3025);
+
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -16,12 +19,12 @@ export default defineConfig(() => {
       include: ['xlsx'],
     },
     server: {
-      port: 3025,
+      port: devPort,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
       proxy: {
         '/api': {
-          target: 'http://localhost:3021',
+          target: apiProxyTarget,
           changeOrigin: true,
         },
       },

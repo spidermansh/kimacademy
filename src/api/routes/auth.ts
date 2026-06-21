@@ -3,9 +3,10 @@ import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken } from '../middleware/auth';
+import { getJwtSecret } from '../config/env';
 
 export const authRouter = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'kim_academy_super_secret_key';
+const JWT_SECRET = getJwtSecret();
 
 authRouter.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -25,6 +26,7 @@ authRouter.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       {
+        userId: user.id,
         username: user.username,
         role: user.role,
         name: user.name,
@@ -39,7 +41,8 @@ authRouter.post('/login', async (req, res) => {
       user: {
         username: user.username,
         name: user.name,
-        role: user.role
+        role: user.role,
+        staffId: user.staffId || ''
       }
     });
   } catch (error: any) {

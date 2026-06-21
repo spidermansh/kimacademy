@@ -21,7 +21,7 @@ model User {
 // 2. StaffMember - Nhân sự (Giáo viên, Trợ giảng, Văn phòng...)
 model StaffMember {
   id                          String             @id @default(uuid())
-  code                        String             @unique // Mã nhân sự duy nhất
+  code                        String             @unique @default(cuid()) // Mã nhân sự duy nhất
   name                        String
   role                        String
   phone                       String?
@@ -58,7 +58,7 @@ model StaffMember {
 // 3. Class - Lớp học
 model Class {
   id                   String             @id @default(uuid())
-  code                 String             @unique // Mã lớp học duy nhất
+  code                 String             @unique @default(cuid()) // Mã lớp học duy nhất
   name                 String             @unique
   type                 String             @default("offline")
   teacherId            String             // Bắt buộc link GV chính
@@ -75,12 +75,14 @@ model Class {
   sessions             Session[]
   attendanceRecords    AttendanceRecord[]
   nameHistory          ClassNameHistory[]
+
+  @@index([teacherId, status])
 }
 
 // 4. Student - Học viên
 model Student {
   id                String              @id @default(uuid())
-  code              String              @unique // Mã học viên duy nhất
+  code              String              @unique @default(cuid()) // Mã học viên duy nhất
   name              String
   vietnameseName    String
   englishName       String
@@ -135,6 +137,8 @@ model Enrollment {
   createdBy         String
   attendanceRecords AttendanceRecord[]
   ledgerEntries     TuitionLedgerEntry[]
+
+  @@index([studentId, classId, isActive])
 }
 
 // 7. Session - Buổi học thực tế
@@ -153,6 +157,9 @@ model Session {
   createdAt              DateTime           @default(now())
   createdBy              String
   attendanceRecords      AttendanceRecord[]
+
+  @@index([classId, date])
+  @@index([teacherId, date])
 }
 
 // 8. AttendanceRecord - Nhật ký điểm danh
@@ -174,6 +181,10 @@ model AttendanceRecord {
   source           String?     @default("manual") // manual | import
   createdAt        DateTime    @default(now())
   createdBy        String
+
+  @@index([date, classId])
+  @@index([studentId, date])
+  @@index([enrollmentId])
 }
 
 // 9. TuitionTransaction - Giao dịch đóng học phí
@@ -194,6 +205,9 @@ model TuitionTransaction {
   importBatchId String?
   createdAt     DateTime @default(now())
   createdBy     String
+
+  @@index([paymentDate])
+  @@index([studentId, enrollmentId])
 }
 
 // 10. RevenueOther - Doanh thu khác (bán sách, đồng phục, lệ phí thi...)
@@ -210,6 +224,9 @@ model RevenueOther {
   createdAt     DateTime           @default(now())
   createdBy     String
   inventoryMovements InventoryMovement[]
+
+  @@index([paymentDate])
+  @@index([studentId])
 }
 
 // 11. TuitionLedgerEntry - Sổ cái học phí riêng của từng Enrollment
@@ -368,6 +385,8 @@ model Expense {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   inventoryMovements InventoryMovement[]
+
+  @@index([date])
 }
 
 // 19. DailyClose - Chốt ca thu chi cuối ngày
@@ -379,6 +398,8 @@ model DailyClose {
   completedBy String
   summary     String   // stored as JSON string
   note        String?
+
+  @@index([date])
 }
 
 // 20. AuditLog - Nhật ký thay đổi hệ thống
@@ -566,13 +587,51 @@ model InventoryMovement {
   relatedRevenueOther   RevenueOther?      @relation(fields: [relatedRevenueOtherId], references: [id])
   relatedExpenseId      String?
   relatedExpense        Expense?           @relation(fields: [relatedExpenseId], references: [id])
+  saleBatchId           String?
+  saleBatch             InventorySaleBatch? @relation(fields: [saleBatchId], references: [id])
+  paymentStatus         String             @default("not_applicable") // not_applicable | unpaid | paid
+  paymentMethod         String?
+  paymentDate           String?
+  paidAt                DateTime?
+  collectedBy           String?
   note                  String?
   movementDate          String             // YYYY-MM-DD
   createdAt             DateTime           @default(now())
   createdBy             String
+
+  @@index([movementDate])
+  @@index([itemId, variantId])
+  @@index([relatedStudentId])
+  @@index([saleBatchId])
+  @@index([paymentStatus, movementType])
 }
 
-// 32. Supplier - Nhà cung cấp
+// 32. InventorySaleBatch - Gom nhom giao dich ban/phat vat tu hang loat
+model InventorySaleBatch {
+  id             String              @id @default(uuid())
+  code           String              @unique
+  classId        String?
+  className      String?
+  itemId         String
+  variantId      String?
+  fromLocationId String?
+  movementDate   String
+  paymentStatus  String              @default("unpaid")
+  paymentMethod  String?
+  paymentDate    String?
+  totalStudents  Int                 @default(0)
+  totalQuantity  Float               @default(0.0)
+  totalAmount    Float               @default(0.0)
+  note           String?
+  createdAt      DateTime            @default(now())
+  createdBy      String
+  movements      InventoryMovement[]
+
+  @@index([classId, movementDate])
+  @@index([itemId, movementDate])
+}
+
+// 33. Supplier - Nhà cung cấp
 model Supplier {
   id        String   @id @default(uuid())
   name      String   @unique
@@ -584,7 +643,7 @@ model Supplier {
   createdAt DateTime @default(now())
 }
 
-// 33. ClassNameHistory - Lịch sử đổi tên lớp học
+// 34. ClassNameHistory - Lịch sử đổi tên lớp học
 model ClassNameHistory {
   id        String   @id @default(uuid())
   classId   String

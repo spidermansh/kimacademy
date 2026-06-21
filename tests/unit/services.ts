@@ -533,6 +533,7 @@ export class InventoryService {
     locationId: string;
     quantity: number;
     unitSalePrice?: number;
+    paymentStatus?: 'not_applicable' | 'unpaid' | 'paid';
     createRevenue?: boolean;
     relatedStudentId?: string;
     relatedStaffId?: string;
@@ -555,6 +556,10 @@ export class InventoryService {
     });
 
     const totalAmount = data.quantity * (data.unitSalePrice || 0);
+    const needsStudentPayment = data.movementType === 'issue_to_student' && totalAmount > 0 && !!data.relatedStudentId;
+    const paymentStatus = needsStudentPayment
+      ? (data.createRevenue ? 'paid' : data.paymentStatus || 'unpaid')
+      : 'not_applicable';
 
     const move = await prisma.inventoryMovement.create({
       data: {
@@ -566,6 +571,11 @@ export class InventoryService {
         totalAmount,
         relatedStudentId: data.relatedStudentId || null,
         relatedStaffId: data.relatedStaffId || null,
+        paymentStatus,
+        paymentDate: paymentStatus === 'paid' ? movementDate : null,
+        paymentMethod: paymentStatus === 'paid' ? 'Tiền mặt' : null,
+        paidAt: paymentStatus === 'paid' ? new Date() : null,
+        collectedBy: paymentStatus === 'paid' ? data.createdBy || 'system' : null,
         note: data.note || '',
         movementDate,
         createdBy: data.createdBy || 'system'
@@ -588,12 +598,176 @@ export class InventoryService {
       await prisma.inventoryMovement.update({
         where: { id: move.id },
         data: {
-          relatedRevenueOtherId: rev.id
+          relatedRevenueOtherId: rev.id,
+          paymentStatus: 'paid',
+          paymentDate: movementDate,
+          paymentMethod: 'Tiền mặt',
+          paidAt: new Date(),
+          collectedBy: data.createdBy || 'system'
         }
       });
     }
 
     return move;
+  }
+
+  static async collectInventoryPayment(data: {
+    movementId: string;
+    paymentDate: string;
+    paymentMethod: string;
+    note?: string;
+    createdBy?: string;
+  }) {
+    const movement = await prisma.inventoryMovement.findUnique({
+      where: { id: data.movementId },
+      include: { item: { include: { category: true } }, relatedStudent: true }
+    });
+    if (!movement) throw new Error('Movement not found');
+    if (movement.paymentStatus === 'paid' || movement.relatedRevenueOtherId) {
+      throw new Error('Payment already collected');
+    }
+
+    const rev = await prisma.revenueOther.create({
+      data: {
+        category: movement.item.category.name,
+        amount: movement.totalAmount || 0,
+        paymentDate: data.paymentDate,
+        paymentMethod: data.paymentMethod,
+        studentId: movement.relatedStudentId || null,
+        description: data.note || `Thu tiền vật tư đã phát: ${movement.item.name}`,
+        createdBy: data.createdBy || 'system'
+      }
+    });
+
+    return prisma.inventoryMovement.update({
+      where: { id: data.movementId },
+      data: {
+        relatedRevenueOtherId: rev.id,
+        paymentStatus: 'paid',
+        paymentDate: data.paymentDate,
+        paymentMethod: data.paymentMethod,
+        paidAt: new Date(),
+        collectedBy: data.createdBy || 'system'
+      }
+    });
+  }
+
+  static async bulkIssueToClass(data: {
+    classId: string;
+    itemId: string;
+    locationId: string;
+    students: { studentId: string; quantity: number }[];
+    unitCost?: number;
+    unitSalePrice?: number;
+    paymentStatus?: 'unpaid' | 'paid';
+    movementDate?: string;
+    note?: string;
+    createdBy?: string;
+  }) {
+    const movementDate = data.movementDate || new Date().toISOString().slice(0, 10);
+    const price = data.unitSalePrice || 0;
+    const totalQty = data.students.reduce((sum, row) => sum + row.quantity, 0);
+    const totalAmount = totalQty * price;
+
+    return prisma.$transaction(async (tx) => {
+      const cls = await tx.class.findUnique({
+        where: { id: data.classId },
+        include: {
+          enrollments: {
+            where: { isActive: true },
+            include: { student: true }
+          }
+        }
+      });
+      if (!cls) throw new Error('Class not found');
+
+      const activeStudentIds = new Set(cls.enrollments.map(e => e.studentId));
+      for (const row of data.students) {
+        if (!activeStudentIds.has(row.studentId)) throw new Error('Student not in class');
+      }
+
+      const stock = await tx.inventoryStock.findFirst({
+        where: { itemId: data.itemId, locationId: data.locationId }
+      });
+      if (!stock || stock.quantityOnHand < totalQty) throw new Error('Insufficient stock levels');
+
+      await tx.inventoryStock.update({
+        where: { id: stock.id },
+        data: { quantityOnHand: stock.quantityOnHand - totalQty }
+      });
+
+      const batch = await tx.inventorySaleBatch.create({
+        data: {
+          code: `PX-TEST-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
+          classId: cls.id,
+          className: cls.name,
+          itemId: data.itemId,
+          variantId: stock.variantId,
+          fromLocationId: data.locationId,
+          movementDate,
+          paymentStatus: data.paymentStatus || 'unpaid',
+          paymentMethod: data.paymentStatus === 'paid' ? 'Tiền mặt' : null,
+          paymentDate: data.paymentStatus === 'paid' ? movementDate : null,
+          totalStudents: data.students.length,
+          totalQuantity: totalQty,
+          totalAmount,
+          note: data.note || null,
+          createdBy: data.createdBy || 'system'
+        }
+      });
+
+      const item = await tx.inventoryItem.findUnique({
+        where: { id: data.itemId },
+        include: { category: true }
+      });
+      if (!item) throw new Error('Item not found');
+
+      const movements = [];
+      for (const row of data.students) {
+        let relatedRevenueOtherId: string | null = null;
+        const rowAmount = row.quantity * price;
+        if (data.paymentStatus === 'paid' && rowAmount > 0) {
+          const rev = await tx.revenueOther.create({
+            data: {
+              category: item.category.name,
+              amount: rowAmount,
+              paymentDate: movementDate,
+              paymentMethod: 'Tiền mặt',
+              studentId: row.studentId,
+              description: data.note || `Bán vật tư hàng loạt`,
+              createdBy: data.createdBy || 'system'
+            }
+          });
+          relatedRevenueOtherId = rev.id;
+        }
+
+        movements.push(await tx.inventoryMovement.create({
+          data: {
+            saleBatchId: batch.id,
+            movementType: 'issue_to_student',
+            itemId: data.itemId,
+            variantId: stock.variantId,
+            fromLocationId: data.locationId,
+            quantity: row.quantity,
+            unitCost: data.unitCost || 0,
+            unitSalePrice: price,
+            totalAmount: rowAmount,
+            relatedStudentId: row.studentId,
+            relatedRevenueOtherId,
+            paymentStatus: price > 0 ? (data.paymentStatus || 'unpaid') : 'not_applicable',
+            paymentMethod: data.paymentStatus === 'paid' ? 'Tiền mặt' : null,
+            paymentDate: data.paymentStatus === 'paid' ? movementDate : null,
+            paidAt: data.paymentStatus === 'paid' ? new Date() : null,
+            collectedBy: data.paymentStatus === 'paid' ? data.createdBy || 'system' : null,
+            note: data.note || '',
+            movementDate,
+            createdBy: data.createdBy || 'system'
+          }
+        }));
+      }
+
+      return { batch, movements };
+    });
   }
 }
 
