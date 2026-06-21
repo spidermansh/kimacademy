@@ -4,6 +4,7 @@ import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth
 import { isTuitionRevenue, REVENUE_CATEGORY_TUITION_OFFLINE } from '../../shared/constants';
 import { validateBody } from '../utils/validate';
 import { createTransactionSchema, createExpenseSchema } from '../schemas';
+import { recalcEnrollmentLedger } from '../services/ledger';
 
 export const financeRouter = Router();
 
@@ -154,27 +155,9 @@ financeRouter.post('/transactions', requireFinanceRole, validateBody(createTrans
         }
       });
 
-      // Update student's tuition ledger for this enrollment
+      // Tính lại sổ cái từ dữ liệu gốc (một nguồn sự thật duy nhất).
       if (targetEnroll) {
-        const ledger = await tx.tuitionLedgerEntry.findUnique({
-          where: { enrollmentId: targetEnroll.id }
-        });
-        if (ledger) {
-          const newPaid = ledger.totalPaid + Number(data.amount);
-          const newBalance = newPaid - ledger.totalSpent;
-          const fee = targetEnroll.feePerSession;
-          const newSessions = fee > 0 ? Math.floor(newBalance / fee) : 0;
-
-          await tx.tuitionLedgerEntry.update({
-            where: { enrollmentId: targetEnroll.id },
-            data: {
-              totalPaid: newPaid,
-              balance: newBalance,
-              sessionsRemaining: newSessions,
-              lastUpdatedAt: new Date()
-            }
-          });
-        }
+        await recalcEnrollmentLedger(tx, targetEnroll.id);
       }
     } else {
       // RevenueOther (Books, uniform, etc.)
@@ -227,28 +210,9 @@ financeRouter.delete('/transactions/:id', requireAdmin, async (req, res) => {
     if (tuitionTx) {
       await tx.tuitionTransaction.delete({ where: { id } });
 
-      // Recalculate Ledger Entry if enrollmentId is present
+      // Tính lại sổ cái từ dữ liệu gốc sau khi xóa giao dịch.
       if (tuitionTx.enrollmentId) {
-        const ledger = await tx.tuitionLedgerEntry.findUnique({
-          where: { enrollmentId: tuitionTx.enrollmentId }
-        });
-        if (ledger) {
-          const newPaid = ledger.totalPaid - tuitionTx.amount;
-          const newBalance = newPaid - ledger.totalSpent;
-          const enroll = await tx.enrollment.findUnique({ where: { id: tuitionTx.enrollmentId } });
-          const fee = enroll ? enroll.feePerSession : 0;
-          const newSessions = fee > 0 ? Math.floor(newBalance / fee) : 0;
-
-          await tx.tuitionLedgerEntry.update({
-            where: { enrollmentId: tuitionTx.enrollmentId },
-            data: {
-              totalPaid: newPaid,
-              balance: newBalance,
-              sessionsRemaining: newSessions,
-              lastUpdatedAt: new Date()
-            }
-          });
-        }
+        await recalcEnrollmentLedger(tx, tuitionTx.enrollmentId);
       }
     } else {
       // Must be RevenueOther

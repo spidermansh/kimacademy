@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { PAYMENT_METHOD_BALANCE_TRANSFER } from '../../shared/constants';
 import { validateBody } from '../utils/validate';
 import { createEnrollmentSchema } from '../schemas';
+import { recalcEnrollmentLedger } from '../services/ledger';
 
 export const enrollmentsRouter = Router();
 
@@ -194,9 +195,9 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
     });
 
     // Carry over balance — mang theo cả số dư dương (còn tiền) lẫn âm (đang nợ),
-    // để công nợ của học viên không bị bỏ lại trên enrollment đã đóng.
+    // để công nợ của học viên không bị bỏ lại trên enrollment đã đóng. Ghi 2 bút
+    // toán đối ứng rồi tính lại sổ cái hai bên từ dữ liệu gốc.
     if (oldBalance !== 0 && oldEnrollmentId) {
-      // Deduct from old enrollment
       await tx.tuitionTransaction.create({
         data: {
           studentId,
@@ -209,24 +210,6 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
         }
       });
 
-      // Update old ledger
-      const oldLedger = await tx.tuitionLedgerEntry.findUnique({
-        where: { enrollmentId: oldEnrollmentId }
-      });
-      if (oldLedger) {
-        const newPaid = oldLedger.totalPaid - oldBalance;
-        const newBal = newPaid - oldLedger.totalSpent;
-        await tx.tuitionLedgerEntry.update({
-          where: { enrollmentId: oldEnrollmentId },
-          data: {
-            totalPaid: newPaid,
-            balance: newBal,
-            sessionsRemaining: 0
-          }
-        });
-      }
-
-      // Add to new enrollment
       await tx.tuitionTransaction.create({
         data: {
           studentId,
@@ -239,18 +222,8 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
         }
       });
 
-      // Update new ledger
-      const newPaid = oldBalance;
-      const newBal = newPaid;
-      const newSessions = newFeePerSession > 0 ? Math.floor(newBal / newFeePerSession) : 0;
-      await tx.tuitionLedgerEntry.update({
-        where: { enrollmentId: newEnroll.id },
-        data: {
-          totalPaid: newPaid,
-          balance: newBal,
-          sessionsRemaining: newSessions
-        }
-      });
+      await recalcEnrollmentLedger(tx, oldEnrollmentId);
+      await recalcEnrollmentLedger(tx, newEnroll.id);
     }
 
     // Update student's primary class name in student profile
@@ -409,30 +382,8 @@ enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, async (req, r
         });
       }
 
-      // Recalculate Tuition Ledger
-      const allAttendance = await tx.attendanceRecord.findMany({
-        where: { enrollmentId: id }
-      });
-      const totalSpent = allAttendance.reduce((sum, a) => sum + (a.feeApplied * a.sessionsDeducted), 0);
-
-      const ledger = enrollment.ledgerEntries[0] || await tx.tuitionLedgerEntry.findUnique({
-        where: { enrollmentId: id }
-      });
-
-      if (ledger) {
-        const balance = ledger.totalPaid - totalSpent;
-        const sessionsRemaining = newFee > 0 ? Math.floor(balance / newFee) : 0;
-
-        await tx.tuitionLedgerEntry.update({
-          where: { enrollmentId: id },
-          data: {
-            totalSpent,
-            balance,
-            sessionsRemaining,
-            lastUpdatedAt: new Date()
-          }
-        });
-      }
+      // Tính lại sổ cái từ dữ liệu gốc (sau khi đã cập nhật feeApplied ở trên).
+      await recalcEnrollmentLedger(tx, id);
       });
     }
 

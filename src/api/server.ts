@@ -22,6 +22,8 @@ import { admissionsRouter } from './routes/admissions';
 import { inventoryRouter } from './routes/inventory';
 import { notificationsRouter } from './routes/notifications';
 import { backupRouter } from './routes/backup';
+import { ledgerRouter } from './routes/ledger';
+import { startLedgerReconcileJob } from './jobs/ledger-reconcile.job';
 
 dotenv.config();
 
@@ -108,6 +110,7 @@ app.use('/api', admissionsRouter);
 app.use('/api', inventoryRouter);
 app.use('/api', notificationsRouter);
 app.use('/api', backupRouter);
+app.use('/api', ledgerRouter);
 
 app.use('/api', (req, res) => {
   res.status(404).json({
@@ -140,6 +143,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 const server = app.listen(PORT, () => {
   console.log(`🚀 API Server V3 running on http://localhost:${PORT}`);
+  startLedgerReconcileJob();
 });
 
 // Graceful shutdown: ngừng nhận request mới rồi đóng DB.

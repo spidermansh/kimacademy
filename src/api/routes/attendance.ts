@@ -2,6 +2,7 @@
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getFeeAtDate } from '../../shared/business/tuition';
+import { recalcEnrollmentLedger } from '../services/ledger';
 
 export const attendanceRouter = Router();
 
@@ -200,32 +201,9 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
       enrollmentsToUpdate.add(enrollment.id);
     }
 
-    // 3. Recalculate Tuition Ledgers
+    // 3. Recalculate Tuition Ledgers (một nguồn sự thật duy nhất).
     for (const enrollmentId of enrollmentsToUpdate) {
-      const allAttendance = await tx.attendanceRecord.findMany({
-        where: { enrollmentId }
-      });
-      const totalSpent = allAttendance.reduce((sum, a) => sum + (a.feeApplied * a.sessionsDeducted), 0);
-
-      const ledger = await tx.tuitionLedgerEntry.findUnique({
-        where: { enrollmentId }
-      });
-      if (ledger) {
-        const balance = ledger.totalPaid - totalSpent;
-        const enroll = await tx.enrollment.findUnique({ where: { id: enrollmentId } });
-        const fee = enroll ? enroll.feePerSession : 0;
-        const sessionsRemaining = fee > 0 ? Math.floor(balance / fee) : 0;
-
-        await tx.tuitionLedgerEntry.update({
-          where: { enrollmentId },
-          data: {
-            totalSpent,
-            balance,
-            sessionsRemaining,
-            lastUpdatedAt: new Date()
-          }
-        });
-      }
+      await recalcEnrollmentLedger(tx, enrollmentId);
     }
 
     // 4. Auto-generate TeachingLog
@@ -293,31 +271,8 @@ attendanceRouter.delete('/attendance/:id', requireAttendanceRole, async (req, re
       where: { id }
     });
 
-    // Recalculate Tuition Ledger
-    const allAttendance = await tx.attendanceRecord.findMany({
-      where: { enrollmentId }
-    });
-    const totalSpent = allAttendance.reduce((sum, a) => sum + (a.feeApplied * a.sessionsDeducted), 0);
-
-    const ledger = await tx.tuitionLedgerEntry.findUnique({
-      where: { enrollmentId }
-    });
-    if (ledger) {
-      const balance = ledger.totalPaid - totalSpent;
-      const enroll = await tx.enrollment.findUnique({ where: { id: enrollmentId } });
-      const fee = enroll ? enroll.feePerSession : 0;
-      const sessionsRemaining = fee > 0 ? Math.floor(balance / fee) : 0;
-
-      await tx.tuitionLedgerEntry.update({
-        where: { enrollmentId },
-        data: {
-          totalSpent,
-          balance,
-          sessionsRemaining,
-          lastUpdatedAt: new Date()
-        }
-      });
-    }
+    // Tính lại sổ cái từ dữ liệu gốc sau khi xóa điểm danh.
+    await recalcEnrollmentLedger(tx, enrollmentId);
 
     // Cleanup TeachingLog if no more present students
     const presentCount = await tx.attendanceRecord.count({
