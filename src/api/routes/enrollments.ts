@@ -3,7 +3,7 @@ import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { PAYMENT_METHOD_BALANCE_TRANSFER } from '../../shared/constants';
 import { validateBody } from '../utils/validate';
-import { createEnrollmentSchema } from '../schemas';
+import { createEnrollmentSchema, updateEnrollmentFeeSchema } from '../schemas';
 import { recalcEnrollmentLedger } from '../services/ledger';
 import { parseFeeHistory } from '../../shared/business/tuition';
 import { writeAudit } from '../utils/audit';
@@ -312,13 +312,9 @@ enrollmentsRouter.post('/enrollments/add-class', requireAcademicRole, async (req
 });
 
 // PUT update enrollment fee (retroactive or prospective)
-enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, async (req, res) => {
+enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, validateBody(updateEnrollmentFeeSchema), async (req, res) => {
   const { id } = req.params;
   const { feePerSession, feeChangeMode } = req.body;
-
-  if (feePerSession === undefined) {
-    return res.status(400).json({ message: 'Thiếu học phí mới' });
-  }
 
   const newFee = Number(feePerSession);
   const changeMode = feeChangeMode || 'retroactive';

@@ -117,3 +117,33 @@ export const dailyCloseSchema = z
     summary: z.union([z.string(), z.record(z.string(), z.any())]),
   })
   .passthrough();
+
+// ===== Cập nhật (PUT) — field optional, chỉ kiểm định dạng/giá trị =====
+
+// PUT /enrollments/:id/fee — đổi học phí (ảnh hưởng sổ cái).
+export const updateEnrollmentFeeSchema = z
+  .object({
+    feePerSession: nonNegativeAmount,
+    feeChangeMode: z.enum(['retroactive', 'prospective']).optional(),
+  })
+  .passthrough();
+
+// PUT /expenses/:id — sửa chi phí.
+export const updateExpenseSchema = z
+  .object({
+    amount: positiveAmount.optional(),
+    date: dateString.optional(),
+    description: z.string().min(1).optional(),
+    paymentMethod: z.string().min(1).optional(),
+    category: z.string().optional(),
+  })
+  .passthrough();
+
+// PUT /salary-advances/:id — sửa tạm ứng.
+export const updateSalaryAdvanceSchema = z
+  .object({
+    amount: positiveAmount.optional(),
+    date: dateString.optional(),
+    reason: z.string().optional(),
+  })
+  .passthrough();

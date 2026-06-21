@@ -3,7 +3,7 @@ import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth';
 import { isTuitionRevenue, REVENUE_CATEGORY_TUITION_OFFLINE } from '../../shared/constants';
 import { validateBody } from '../utils/validate';
-import { createTransactionSchema, createExpenseSchema, dailyCloseSchema } from '../schemas';
+import { createTransactionSchema, createExpenseSchema, dailyCloseSchema, updateExpenseSchema } from '../schemas';
 import { recalcEnrollmentLedger } from '../services/ledger';
 import { coerceJson } from '../../shared/json';
 import { writeAudit } from '../utils/audit';
@@ -341,7 +341,7 @@ financeRouter.post('/expenses', requireFinanceRole, validateBody(createExpenseSc
 });
 
 // PUT update expense
-financeRouter.put('/expenses/:id', requireFinanceRole, async (req, res) => {
+financeRouter.put('/expenses/:id', requireFinanceRole, validateBody(updateExpenseSchema), async (req, res) => {
   const { id } = req.params;
   const data = req.body;
 

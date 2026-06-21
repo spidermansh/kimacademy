@@ -5,7 +5,7 @@ import { generateUniqueCode } from '../utils/codes';
 import { toArray } from '../../shared/json';
 import { monthRange, toDateStr } from '../utils/dates';
 import { validateBody } from '../utils/validate';
-import { createStaffSchema, createTeachingLogSchema, createSalaryAdvanceSchema } from '../schemas';
+import { createStaffSchema, createTeachingLogSchema, createSalaryAdvanceSchema, updateSalaryAdvanceSchema } from '../schemas';
 import { writeAudit } from '../utils/audit';
 
 export const payrollRouter = Router();
@@ -385,7 +385,7 @@ payrollRouter.post('/salary-advances', requirePayrollRole, validateBody(createSa
 });
 
 // PUT update salary advance
-payrollRouter.put('/salary-advances/:id', requirePayrollRole, async (req, res) => {
+payrollRouter.put('/salary-advances/:id', requirePayrollRole, validateBody(updateSalaryAdvanceSchema), async (req, res) => {
   const { id } = req.params;
   const data = req.body;
 
