@@ -42,7 +42,7 @@ usersRouter.post('/users', validateBody(createUserSchema), async (req, res) => {
       return res.status(400).json({ message: 'Tên đăng nhập đã tồn tại' });
     }
 
-    const hashedPassword = bcryptjs.hashSync(password, 10);
+    const hashedPassword = await bcryptjs.hash(password, 10);
     const created = await prisma.user.create({
       data: {
         username: username.toLowerCase(),
@@ -82,7 +82,11 @@ usersRouter.put('/users/:id', async (req, res) => {
       data.username = username.toLowerCase();
     }
 
-    if (password) data.password = bcryptjs.hashSync(password, 10);
+    if (password) {
+      data.password = await bcryptjs.hash(password, 10);
+      // Đổi mật khẩu → thu hồi mọi phiên cũ của user đó.
+      data.tokenVersion = { increment: 1 };
+    }
     if (name) data.name = name;
     if (role) data.role = role;
 

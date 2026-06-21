@@ -8,14 +8,15 @@ generator client {
 
 // 1. User - Tài khoản người dùng
 model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String
-  name      String
-  role      String
-  staffId   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  username     String   @unique
+  password     String
+  name         String
+  role         String
+  staffId      String?
+  tokenVersion Int      @default(0) // tăng để thu hồi toàn bộ token đang phát hành cho user
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 // 2. StaffMember - Nhân sự (Giáo viên, Trợ giảng, Văn phòng...)
