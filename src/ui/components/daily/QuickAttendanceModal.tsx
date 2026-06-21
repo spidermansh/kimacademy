@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Check, AlertTriangle, AlertCircle, UserCheck, RefreshCw } from 'lucide-react';
 import { Student, Class, AttendanceRecord } from '../../../shared/types';
-import { api, formatDate, isDayMatch } from '../../../shared/utils';
+import { api, formatDate } from '../../../shared/utils';
 
 interface QuickAttendanceModalProps {
   isOpen: boolean;
@@ -37,11 +37,21 @@ export default function QuickAttendanceModal({
   const todayClasses = useMemo(() => {
     const today = new Date();
     const dayOfWeek = today.getDay();
+    const VIET_DAY_MAP: Record<number, string[]> = {
+      0: ['cn', 'chủ nhật'],
+      1: ['thứ 2', 't2', 'thứ hai'],
+      2: ['thứ 3', 't3', 'thứ ba'],
+      3: ['thứ 4', 't4', 'thứ tư'],
+      4: ['thứ 5', 't5', 'thứ năm'],
+      5: ['thứ 6', 't6', 'thứ sáu'],
+      6: ['thứ 7', 't7', 'thứ bảy'],
+    };
+    const todayNames = VIET_DAY_MAP[dayOfWeek] || [];
     
     return classes.filter(cls => {
       if (cls.status !== 'active' || cls.type === 'online') return false;
       const days = cls.scheduleDays || [];
-      return days.some(d => isDayMatch(d, dayOfWeek));
+      return days.some(d => todayNames.some(tn => d.toLowerCase().includes(tn)));
     });
   }, [classes]);
 

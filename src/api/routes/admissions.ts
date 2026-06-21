@@ -265,7 +265,6 @@ admissionsRouter.post('/admission-leads/:id/convert', async (req, res) => {
     // 3. Create Student
     const student = await prisma.student.create({
       data: {
-        code: `HV-${Math.floor(100000 + Math.random() * 900000)}`,
         name: lead.studentName,
         vietnameseName: lead.studentName,
         englishName: lead.suggestedLevel || '',

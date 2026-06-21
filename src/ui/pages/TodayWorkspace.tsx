@@ -8,7 +8,7 @@ import {
   Pencil, GripVertical
 } from 'lucide-react';
 import { Student, Class, Transaction, Expense, StaffMember, AttendanceRecord, TeachingLog, SalaryAdvance, MonthlySalary, AppSettings, DailyCloseRecord, SystemParameter } from '../../shared/types';
-import { api, formatCurrency, formatDateKey, getRecentBusinessDates, isDayMatch } from '../../shared/utils';
+import { api, formatCurrency, formatDateKey, getRecentBusinessDates } from '../../shared/utils';
 import { computeAlerts, BusinessAlert } from '../../shared/business/alerts';
 import { computeTodayOverview, computeMonthOverview } from '../../shared/business/dashboard';
 import { computeTuitionSummary } from '../../shared/business/tuition';
@@ -427,7 +427,17 @@ export default function TodayWorkspace({
       const today = new Date();
       const todayStr = today.toISOString().slice(0, 10);
       const dayOfWeek = today.getDay();
-      const hasToday = days.some(d => isDayMatch(d, dayOfWeek));
+      const VIET_DAY_MAP: Record<number, string[]> = {
+        0: ['cn', 'chủ nhật'],
+        1: ['thứ 2', 't2', 'thứ hai'],
+        2: ['thứ 3', 't3', 'thứ ba'],
+        3: ['thứ 4', 't4', 'thứ tư'],
+        4: ['thứ 5', 't5', 'thứ năm'],
+        5: ['thứ 6', 't6', 'thứ sáu'],
+        6: ['thứ 7', 't7', 'thứ bảy'],
+      };
+      const todayNames = VIET_DAY_MAP[dayOfWeek] || [];
+      const hasToday = days.some(d => todayNames.some(tn => d.toLowerCase().includes(tn)));
 
       if (hasToday) {
         const attendedToday = attendance.some(a => a.date === todayStr && (a.classId === cls.id || a.className === cls.name || a.classId === cls.name));
@@ -557,10 +567,20 @@ export default function TodayWorkspace({
       const parts = dateStr.split('-');
       const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       const dayOfWeek = dateObj.getDay();
+      const VIET_DAY_MAP: Record<number, string[]> = {
+        0: ['cn', 'chủ nhật'],
+        1: ['thứ 2', 't2', 'thứ hai'],
+        2: ['thứ 3', 't3', 'thứ ba'],
+        3: ['thứ 4', 't4', 'thứ tư'],
+        4: ['thứ 5', 't5', 'thứ năm'],
+        5: ['thứ 6', 't6', 'thứ sáu'],
+        6: ['thứ 7', 't7', 'thứ bảy'],
+      };
+      const dayNames = VIET_DAY_MAP[dayOfWeek] || [];
       const hasClassScheduled = classes.some(cls => {
         if (cls.status !== 'active' || cls.type === 'online') return false;
         const days = cls.scheduleDays || [];
-        return days.some(d => isDayMatch(d, dayOfWeek));
+        return days.some(d => dayNames.some(tn => d.toLowerCase().includes(tn)));
       });
 
       const hasAttendance = attendance.some(a => a.date === dateStr);

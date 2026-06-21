@@ -6,46 +6,6 @@ export const studentsRouter = Router();
 
 studentsRouter.use(authenticateToken);
 
-// Helper to format student response consistently with Frontend interface Student
-async function formatStudent(s: any) {
-  let guardianContacts = s.guardianContacts;
-  if (!guardianContacts) {
-    guardianContacts = await prisma.guardianContact.findMany({
-      where: { studentId: s.id }
-    });
-  }
-
-  let enrollments = s.enrollments;
-  if (!enrollments) {
-    enrollments = await prisma.enrollment.findMany({
-      where: { studentId: s.id },
-      include: { class: true }
-    });
-  }
-
-  const activeEnrollment = enrollments.find((e: any) => e.isActive) || enrollments[0];
-  const primaryContact = guardianContacts.find((c: any) => c.isPrimary) || guardianContacts[0];
-  const vietAnhName = s.vietnameseName && s.englishName ? `${s.vietnameseName} (${s.englishName})` : s.vietnameseName || s.englishName || s.name;
-
-  return {
-    id: s.id,
-    name: s.name,
-    vietnameseName: s.vietnameseName,
-    englishName: s.englishName,
-    vietAnhName,
-    gender: s.gender || '',
-    birthYear: s.birthDate ? parseInt(s.birthDate.slice(0, 4)) : null,
-    parentPhone: primaryContact ? primaryContact.phone : '',
-    className: activeEnrollment?.class?.name || '',
-    feePerSession: activeEnrollment ? activeEnrollment.feePerSession : 0,
-    feeHistory: activeEnrollment ? JSON.parse(activeEnrollment.feeHistory || '[]') : [],
-    status: s.status,
-    enrollDate: s.enrollDate,
-    createdAt: s.createdAt,
-    updatedAt: s.updatedAt
-  };
-}
-
 // GET all students (formatted for V1 frontend)
 studentsRouter.get('/students', async (req, res) => {
   try {
@@ -61,7 +21,28 @@ studentsRouter.get('/students', async (req, res) => {
       orderBy: { name: 'asc' }
     });
 
-    const formatted = await Promise.all(students.map(s => formatStudent(s)));
+    const formatted = students.map(s => {
+      const activeEnrollment = s.enrollments.find(e => e.isActive) || s.enrollments[0];
+      const primaryContact = s.guardianContacts.find(c => c.isPrimary) || s.guardianContacts[0];
+      return {
+        id: s.id,
+        name: s.name,
+        vietnameseName: s.vietnameseName,
+        englishName: s.englishName,
+        vietAnhName: `${s.vietnameseName} (${s.englishName})`,
+        gender: s.gender,
+        birthYear: s.birthDate ? parseInt(s.birthDate.slice(0, 4)) : null,
+        parentPhone: primaryContact ? primaryContact.phone : '',
+        className: activeEnrollment?.class?.name || '',
+        feePerSession: activeEnrollment ? activeEnrollment.feePerSession : 0,
+        feeHistory: activeEnrollment ? JSON.parse(activeEnrollment.feeHistory) : [],
+        status: s.status,
+        enrollDate: s.enrollDate,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt
+      };
+    });
+
     res.json(formatted);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -74,7 +55,6 @@ studentsRouter.post('/students', async (req, res) => {
   try {
     const student = await prisma.student.create({
       data: {
-        code: data.code || `HV-${Math.floor(100000 + Math.random() * 900000)}`,
         name: data.name,
         vietnameseName: data.vietnameseName || data.name,
         englishName: data.englishName || '',
@@ -129,8 +109,7 @@ studentsRouter.post('/students', async (req, res) => {
       }
     }
 
-    const formatted = await formatStudent(student);
-    res.status(201).json(formatted);
+    res.status(201).json(student);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -208,8 +187,7 @@ studentsRouter.put('/students/:id', async (req, res) => {
       }
     }
 
-    const formatted = await formatStudent(updatedStudent);
-    res.json(formatted);
+    res.json(updatedStudent);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -278,7 +256,6 @@ studentsRouter.post('/students/batch', async (req, res) => {
       // Find or create student
       const student = await prisma.student.create({
         data: {
-          code: data.code || `HV-${Math.floor(100000 + Math.random() * 900000)}`,
           name: data.name,
           vietnameseName: data.vietnameseName || data.name,
           englishName: data.englishName || '',

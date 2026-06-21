@@ -1,6 +1,6 @@
 import { Student, Transaction, AttendanceRecord, Class, StaffMember, MonthlySalary, Expense, Enrollment } from '../types';
 import { computeTuitionSummary, computeRevenueSummary, getFeeAtDate } from './tuition';
-import { formatDateKey, isDayMatch } from '../utils';
+import { formatDateKey } from '../utils';
 
 export interface TodayOverviewStats {
   classesScheduled: number;
@@ -83,6 +83,16 @@ export function computeDayOverview(
   const dayOfWeek = dateObj.getDay();
 
   // Xem xét lớp nào có lịch hôm nay
+  const VIET_DAY_MAP: Record<number, string[]> = {
+    0: ['cn', 'chủ nhật'],
+    1: ['thứ 2', 't2', 'thứ hai'],
+    2: ['thứ 3', 't3', 'thứ ba'],
+    3: ['thứ 4', 't4', 'thứ tư'],
+    4: ['thứ 5', 't5', 'thứ năm'],
+    5: ['thứ 6', 't6', 'thứ sáu'],
+    6: ['thứ 7', 't7', 'thứ bảy'],
+  };
+  const todayNames = VIET_DAY_MAP[dayOfWeek] || [];
 
   const activeClasses = classes.filter(c => c.status === 'active' && c.type !== 'online');
   
@@ -91,7 +101,7 @@ export function computeDayOverview(
 
   activeClasses.forEach(cls => {
     const days: string[] = Array.isArray(cls.scheduleDays) ? cls.scheduleDays : [];
-    const hasToday = days.some((d: string) => isDayMatch(d, dayOfWeek));
+    const hasToday = days.some((d: string) => todayNames.some(tn => d.toLowerCase().includes(tn)));
     if (hasToday) {
       classesScheduled++;
       const isAttended = attendance.some(a => a.date === targetDateStr && (a.classId === cls.id || a.className === cls.name || a.classId === cls.name));

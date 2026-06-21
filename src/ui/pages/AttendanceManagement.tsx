@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { api, formatDate, isDayMatch } from '../../shared/utils';
+import { api, formatDate } from '../../shared/utils';
 import { StaffMember } from '../../shared/types';
 import { useToast } from '../components/Toast';
 import * as XLSX from 'xlsx-js-style';
@@ -85,7 +85,17 @@ function isClassScheduledOnDate(cls: any, dateStr: string): boolean {
   if (!cls || !cls.scheduleDays || cls.scheduleDays.length === 0) return false;
   const d = new Date(dateStr + 'T00:00:00');
   const dayIndex = d.getDay();
-  return cls.scheduleDays.some((sd: string) => isDayMatch(sd, dayIndex));
+  
+  const weekdayFull = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+  const weekdayShort = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+  
+  const targetFull = weekdayFull[dayIndex].toLowerCase();
+  const targetShort = weekdayShort[dayIndex].toLowerCase();
+  
+  return cls.scheduleDays.some((sd: string) => {
+    const sdLower = sd.toLowerCase().trim();
+    return sdLower === targetFull || sdLower === targetShort || sdLower.includes(targetShort) || sdLower.includes(targetFull);
+  });
 }
 
 // Normalize a class entry

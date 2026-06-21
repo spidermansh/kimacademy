@@ -1,6 +1,6 @@
 import { Student, Transaction, AttendanceRecord, Class, StaffMember, TeachingLog, SalaryAdvance, MonthlySalary, Expense, DailyCloseRecord, SystemParameter, AdmissionLead, Enrollment } from '../types';
 import { getFeeAtDate, computeTuitionSummary, computeRevenueSummary, computeTuitionCost } from './tuition';
-import { formatDateKey, formatDate, isDayMatch } from '../utils';
+import { formatDateKey, formatDate } from '../utils';
 
 export interface ReportParams {
   students: Student[];
@@ -173,12 +173,11 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
 
           return filteredClasses.map(c => {
             const count = students.filter(s => s.status === 'active' && enrollments.some(e => e.studentId === s.id && e.className === c.name && e.isActive)).length;
-            const schedStr = c.schedule || (c.scheduleTime ? (c.scheduleDays && c.scheduleDays.length ? `${c.scheduleDays.join(', ')} — ${c.scheduleTime}` : c.scheduleTime) : '—');
             return {
               className: c.name,
               type: c.type === 'offline' ? 'Trực tiếp' : c.type,
-              teacher: c.teacher || c.teacherName || 'Chưa phân công',
-              schedule: schedStr,
+              teacher: c.teacher || 'Chưa phân công',
+              schedule: c.schedule || '—',
               room: c.room || '—',
               activeCount: count,
               maxStudents: c.maxStudents || 0
@@ -671,18 +670,17 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           return classes
             .filter(c => {
               if (c.type === 'online') return false; // offline-only
-              if (filters.teacherId && c.teacherId !== filters.teacherId && c.teacher !== filters.teacherId && c.teacherName !== filters.teacherId) return false;
+              if (filters.teacherId && c.teacherId !== filters.teacherId && c.teacher !== filters.teacherId) return false;
               if (filters.classStatus && filters.classStatus !== 'all' && c.status !== filters.classStatus) return false;
               return true;
             })
             .map(c => {
               const cnt = students.filter(s => s.status === 'active' && enrollments.some(e => e.studentId === s.id && e.className === c.name && e.isActive)).length;
-              const schedStr = c.schedule || (c.scheduleTime ? (c.scheduleDays && c.scheduleDays.length ? `${c.scheduleDays.join(', ')} — ${c.scheduleTime}` : c.scheduleTime) : '—');
               return {
                 className: c.name,
                 type: c.type === 'offline' ? 'Offline' : c.type,
-                schedule: schedStr,
-                teacher: c.teacher || c.teacherName || 'Chưa phân công',
+                schedule: c.schedule || '—',
+                teacher: c.teacher || 'Chưa phân công',
                 activeCount: cnt,
                 maxStudents: c.maxStudents || 0,
                 status: c.status === 'active' ? 'Đang dạy' : c.status === 'suspended' ? 'Tạm dừng' : 'Đã kết thúc'
@@ -802,11 +800,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               return true;
             })
             .map(s => {
-              const studsAtt = attendance.filter(a => {
-                if (a.studentId !== s.id) return false;
-                if (filters.classId && a.className !== filters.classId && a.classId !== filters.classId) return false;
-                return true;
-              });
+              const studsAtt = attendance.filter(a => a.studentId === s.id);
               const total = studsAtt.length;
               const present = studsAtt.filter(a => a.status === 'present').length;
               const rate = total > 0 ? Math.round((present / total) * 100) : 0;
@@ -836,43 +830,25 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'present', label: 'Số buổi đi học', align: 'right', format: 'number' },
           { key: 'absent', label: 'Số buổi vắng ko phép', align: 'right', format: 'number' }
         ],
-        compute: ({ students, attendance, enrollments = [], filters }) => {
-          const rows: any[] = [];
-          students.forEach(s => {
-            if (filters.studentId && s.id !== filters.studentId) return;
-
-            const studentEnrollments = enrollments.filter(e => e.studentId === s.id);
-            if (studentEnrollments.length > 0) {
-              studentEnrollments.forEach(e => {
-                if (filters.classId && e.className !== filters.classId) return;
-
-                const classAtt = attendance.filter(a => a.studentId === s.id && a.className === e.className);
-                const present = classAtt.filter(a => a.status === 'present').length;
-                const absent = classAtt.filter(a => a.status === 'absent').length;
-                rows.push({
-                  studentName: s.name,
-                  className: e.className,
-                  sessionsUsed: present + absent,
-                  present,
-                  absent
-                });
-              });
-            } else {
-              if (filters.classId && s.className !== filters.classId) return;
-
-              const classAtt = attendance.filter(a => a.studentId === s.id && (!s.className || a.className === s.className));
+        compute: ({ students, attendance, filters }) => {
+          return students
+            .filter(s => {
+              if (filters.classId && s.className !== filters.classId) return false;
+              if (filters.studentId && s.id !== filters.studentId) return false;
+              return true;
+            })
+            .map(s => {
+              const classAtt = attendance.filter(a => a.studentId === s.id);
               const present = classAtt.filter(a => a.status === 'present').length;
               const absent = classAtt.filter(a => a.status === 'absent').length;
-              rows.push({
+              return {
                 studentName: s.name,
                 className: s.className || '—',
                 sessionsUsed: present + absent,
                 present,
                 absent
-              });
-            }
-          });
-          return rows;
+              };
+            });
         }
       },
       {
@@ -1018,29 +994,37 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           const start = filters.startDate || formatDateKey(new Date());
           const end = filters.endDate || formatDateKey(new Date());
 
-          const startParts = start.split('-').map(Number);
-          const endParts = end.split('-').map(Number);
-          const startD = new Date(startParts[0], startParts[1] - 1, startParts[2]);
-          const endD = new Date(endParts[0], endParts[1] - 1, endParts[2]);
+          const startD = new Date(start);
+          const endD = new Date(end);
           const list: any[] = [];
+
+          const VIET_DAY_MAP: Record<number, string[]> = {
+            0: ['cn', 'chủ nhật'],
+            1: ['thứ 2', 't2', 'thứ hai'],
+            2: ['thứ 3', 't3', 'thứ ba'],
+            3: ['thứ 4', 't4', 'thứ tư'],
+            4: ['thứ 5', 't5', 'thứ năm'],
+            5: ['thứ 6', 't6', 'thứ sáu'],
+            6: ['thứ 7', 't7', 'thứ bảy'],
+          };
 
           for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
             const dateStr = formatDateKey(d);
             const dayOfWeek = d.getDay();
+            const dayNames = VIET_DAY_MAP[dayOfWeek] || [];
 
             classes.forEach(cls => {
               if (cls.status !== 'active' || cls.type === 'online') return;
               const days = cls.scheduleDays || [];
-              const hasDay = days.some(day => isDayMatch(day, dayOfWeek));
+              const hasDay = days.some(day => dayNames.some(tn => day.toLowerCase().includes(tn)));
               if (hasDay) {
                 const attended = attendance.some(a => a.date === dateStr && (a.classId === cls.id || a.className === cls.name || a.classId === cls.name));
                 if (!attended) {
-                  const schedStr = cls.scheduleTime ? (cls.scheduleDays && cls.scheduleDays.length ? `${cls.scheduleDays.join(', ')} — ${cls.scheduleTime}` : cls.scheduleTime) : (cls.schedule || '—');
                   list.push({
                     dateStr,
                     className: cls.name,
-                    teacher: cls.teacher || cls.teacherName || 'Chưa rõ',
-                    schedule: schedStr
+                    teacher: cls.teacher || 'Chưa rõ',
+                    schedule: cls.scheduleTime || cls.schedule
                   });
                 }
               }
@@ -1090,7 +1074,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               
               if (filters.searchQuery) {
                 const q = filters.searchQuery.toLowerCase();
-                return c.name.toLowerCase().includes(q) || (c.teacher || '').toLowerCase().includes(q) || (c.teacherName || '').toLowerCase().includes(q);
+                return c.name.toLowerCase().includes(q) || (c.teacher || '').toLowerCase().includes(q);
               }
               return true;
             })
@@ -1109,11 +1093,10 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
                 operNote = `Trạng thái: ${c.status}`;
               }
               
-              const schedStr = c.schedule || (c.scheduleTime ? (c.scheduleDays && c.scheduleDays.length ? `${c.scheduleDays.join(', ')} — ${c.scheduleTime}` : c.scheduleTime) : '—');
               return {
                 className: c.name,
-                teacher: c.teacher || c.teacherName || 'Chưa phân công',
-                schedule: schedStr,
+                teacher: c.teacher || 'Chưa phân công',
+                schedule: c.schedule || '—',
                 defaultFee: c.defaultFee || 0,
                 studentCount: activeCount,
                 note: operNote
@@ -1899,7 +1882,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
                   list.push({
                     date: group.date,
                     className: group.className,
-                    teacher: cls.teacher || cls.teacherName || 'Chưa phân công',
+                    teacher: cls.teacher || 'Chưa phân công',
                     warning: 'Đã điểm danh học sinh nhưng giáo viên chưa được ghi nhận Chấm công dạy.'
                   });
                 }
@@ -1925,13 +1908,13 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           return staff
             .filter(s => {
               if ((s.role !== 'teacher' && s.role !== 'teaching_assistant') || s.status !== 'active') return false;
-              const hasClass = classes.some(c => c.status === 'active' && (c.teacherId === s.id || c.teacher?.toLowerCase().trim() === s.name.toLowerCase().trim() || c.teacherName?.toLowerCase().trim() === s.name.toLowerCase().trim()));
+              const hasClass = classes.some(c => c.status === 'active' && (c.teacherId === s.id || c.teacher?.toLowerCase().trim() === s.name.toLowerCase().trim()));
               const missingRate = !s.ratePerSession || s.ratePerSession <= 0;
               return hasClass && missingRate;
             })
             .map(s => {
               const teacherClasses = classes
-                .filter(c => c.status === 'active' && (c.teacherId === s.id || c.teacher?.toLowerCase().trim() === s.name.toLowerCase().trim() || c.teacherName?.toLowerCase().trim() === s.name.toLowerCase().trim()))
+                .filter(c => c.status === 'active' && (c.teacherId === s.id || c.teacher?.toLowerCase().trim() === s.name.toLowerCase().trim()))
                 .map(c => c.name)
                 .join(', ');
               return {
@@ -2009,6 +1992,16 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             dates.push(formatDateKey(d));
           }
 
+          const VIET_DAY_MAP: Record<number, string[]> = {
+            0: ['cn', 'chủ nhật'],
+            1: ['thứ 2', 't2', 'thứ hai'],
+            2: ['thứ 3', 't3', 'thứ ba'],
+            3: ['thứ 4', 't4', 'thứ tư'],
+            4: ['thứ 5', 't5', 'thứ năm'],
+            5: ['thứ 6', 't6', 'thứ sáu'],
+            6: ['thứ 7', 't7', 'thứ bảy'],
+          };
+
           const list: any[] = [];
           dates.forEach(dateStr => {
             const isReconciled = dailyCloses.some(r => r.date === dateStr);
@@ -2017,11 +2010,12 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             const parts = dateStr.split('-');
             const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
             const dayOfWeek = dateObj.getDay();
+            const dayNames = VIET_DAY_MAP[dayOfWeek] || [];
 
             const scheduledClasses = classes.filter(cls => {
               if (cls.status !== 'active' || cls.type === 'online') return false;
               const days = cls.scheduleDays || [];
-              return days.some(d => isDayMatch(d, dayOfWeek));
+              return days.some(d => dayNames.some(tn => d.toLowerCase().includes(tn)));
             });
 
             const dayAtt = attendance.filter(a => a.date === dateStr);

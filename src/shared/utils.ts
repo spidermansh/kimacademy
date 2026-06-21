@@ -606,29 +606,6 @@ export function getRecentBusinessDates(days: number = 7): string[] {
   return dates;
 }
 
-export function isDayMatch(dayStr: string, dayOfWeek: number): boolean {
-  const cleanDay = dayStr.toLowerCase().trim();
-  switch (dayOfWeek) {
-    case 0:
-      return ['cn', 'chủ nhật', 'sunday', 'sun'].some(x => cleanDay === x || cleanDay.includes(x));
-    case 1:
-      return ['thứ 2', 't2', 'thứ hai', 'monday', 'mon'].some(x => cleanDay === x || cleanDay.includes(x));
-    case 2:
-      if (cleanDay.includes('bảy') || cleanDay.includes('bay')) return false;
-      return ['thứ 3', 't3', 'thứ ba', 'tuesday', 'tue'].some(x => cleanDay === x || cleanDay.includes(x));
-    case 3:
-      return ['thứ 4', 't4', 'thứ tư', 'wednesday', 'wed'].some(x => cleanDay === x || cleanDay.includes(x));
-    case 4:
-      return ['thứ 5', 't5', 'thứ năm', 'thursday', 'thu'].some(x => cleanDay === x || cleanDay.includes(x));
-    case 5:
-      return ['thứ 6', 't6', 'thứ sáu', 'friday', 'fri'].some(x => cleanDay === x || cleanDay.includes(x));
-    case 6:
-      return ['thứ 7', 't7', 'thứ bảy', 'saturday', 'sat'].some(x => cleanDay === x || cleanDay.includes(x));
-    default:
-      return false;
-  }
-}
-
 export function numberToVietnameseWords(num: number): string {
   if (num === 0) return 'Không đồng';
 

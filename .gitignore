@@ -22,14 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Env & secrets
 .env
-.env.*
-
-# Backups
+data/
 backups/
-data/backups/
-data-templates/
 scratch/
-

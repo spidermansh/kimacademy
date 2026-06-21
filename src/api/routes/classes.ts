@@ -24,20 +24,6 @@ async function formatClass(c: any, staffMap?: Map<string, string>) {
     scheduleDays = [];
   }
 
-  const schedule = c.scheduleTime ? `${scheduleDays.join(', ')} — ${c.scheduleTime}` : '';
-
-  let studentCount = 0;
-  if (c.enrollments) {
-    studentCount = c.enrollments.length;
-  } else {
-    studentCount = await prisma.enrollment.count({
-      where: {
-        classId: c.id,
-        isActive: true
-      }
-    });
-  }
-
   return {
     id: c.id,
     code: c.code,
@@ -48,13 +34,12 @@ async function formatClass(c: any, staffMap?: Map<string, string>) {
     teacherName,
     room: c.room || '',
     maxStudents: c.maxStudents || 15,
-    studentCount,
+    studentCount: c.enrollments ? c.enrollments.length : await prisma.enrollment.count({ where: { classId: c.id, isActive: true } }),
     status: c.status,
     defaultFee: c.defaultFeePerSession,
     defaultFeePerSession: c.defaultFeePerSession,
     scheduleDays,
     scheduleTime: c.scheduleTime || '',
-    schedule,
     description: c.description || '',
     createdAt: c.createdAt,
     updatedAt: c.updatedAt

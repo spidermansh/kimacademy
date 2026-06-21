@@ -215,9 +215,9 @@ settingsRouter.post('/admin/seed-demo', requireAdmin, async (req, res) => {
     if (existingStaff === 0) {
       await prisma.staffMember.createMany({
         data: [
-          { code: 'NV0001', name: 'Cô Nguyễn Thị Kim', role: 'teacher', phone: '0901234567', baseSalary: 5000000, ratePerSession: 300000, status: 'active', startDate: '2024-01-01' },
-          { code: 'NV0002', name: 'Thầy Trần Văn Minh', role: 'teacher', phone: '0912345678', baseSalary: 5000000, ratePerSession: 350000, status: 'active', startDate: '2024-01-01' },
-          { code: 'NV0003', name: 'Cô Lê Thị Hoa', role: 'teaching_assistant', phone: '0923456789', baseSalary: 3000000, ratePerHour: 50000, status: 'active', startDate: '2024-06-01' },
+          { name: 'Cô Nguyễn Thị Kim', role: 'teacher', phone: '0901234567', baseSalary: 5000000, ratePerSession: 300000, status: 'active', startDate: '2024-01-01' },
+          { name: 'Thầy Trần Văn Minh', role: 'teacher', phone: '0912345678', baseSalary: 5000000, ratePerSession: 350000, status: 'active', startDate: '2024-01-01' },
+          { name: 'Cô Lê Thị Hoa', role: 'teaching_assistant', phone: '0923456789', baseSalary: 3000000, ratePerHour: 50000, status: 'active', startDate: '2024-06-01' },
         ]
       });
       staffCreated = 3;
@@ -230,9 +230,9 @@ settingsRouter.post('/admin/seed-demo', requireAdmin, async (req, res) => {
       const staff = await prisma.staffMember.findMany({ take: 2 });
       await prisma.class.createMany({
         data: [
-          { code: 'LH0001', name: 'Lớp Starter A', type: 'offline', teacherId: staff[0]?.id || '', room: 'P101', maxStudents: 12, status: 'active', defaultFeePerSession: 150000, scheduleDays: '["Thứ 2","Thứ 4","Thứ 6"]', scheduleTime: '08:00-09:30' },
-          { code: 'LH0002', name: 'Lớp Beginner B', type: 'offline', teacherId: staff[1]?.id || staff[0]?.id || '', room: 'P102', maxStudents: 12, status: 'active', defaultFeePerSession: 180000, scheduleDays: '["Thứ 3","Thứ 5","Thứ 7"]', scheduleTime: '09:30-11:00' },
-          { code: 'LH0003', name: 'Lớp Advanced C', type: 'offline', teacherId: staff[0]?.id || '', room: 'P201', maxStudents: 10, status: 'active', defaultFeePerSession: 250000, scheduleDays: '["Thứ 2","Thứ 4"]', scheduleTime: '14:00-15:30' },
+          { name: 'Lớp Starter A', type: 'offline', teacherId: staff[0]?.id || '', room: 'P101', maxStudents: 12, status: 'active', defaultFeePerSession: 150000, scheduleDays: '["Thứ 2","Thứ 4","Thứ 6"]', scheduleTime: '08:00-09:30' },
+          { name: 'Lớp Beginner B', type: 'offline', teacherId: staff[1]?.id || staff[0]?.id || '', room: 'P102', maxStudents: 12, status: 'active', defaultFeePerSession: 180000, scheduleDays: '["Thứ 3","Thứ 5","Thứ 7"]', scheduleTime: '09:30-11:00' },
+          { name: 'Lớp Advanced C', type: 'offline', teacherId: staff[0]?.id || '', room: 'P201', maxStudents: 10, status: 'active', defaultFeePerSession: 250000, scheduleDays: '["Thứ 2","Thứ 4"]', scheduleTime: '14:00-15:30' },
         ]
       });
       classesCreated = 3;
@@ -257,7 +257,6 @@ settingsRouter.post('/admin/seed-demo', requireAdmin, async (req, res) => {
         const student = await prisma.student.create({
           data: {
             ...s,
-            code: `HV-${1000 + i}`,
             createdBy: 'seed-demo'
           }
         });

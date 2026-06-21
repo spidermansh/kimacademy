@@ -10,61 +10,6 @@ financeRouter.use(authenticateToken);
 // TRANSACTIONS & REVENUE (Tuition + RevenueOther)
 // ==========================================
 
-// Helper to format transaction output consistently with Frontend Transaction interface
-async function formatTransaction(t: any) {
-  const isTuition = !('category' in t);
-  let student = t.student;
-  if (t.studentId && !student) {
-    student = await prisma.student.findUnique({
-      where: { id: t.studentId },
-      include: {
-        enrollments: {
-          where: { isActive: true },
-          include: { class: true }
-        }
-      }
-    });
-  }
-
-  const activeEnroll = student?.enrollments?.[0];
-
-  if (isTuition) {
-    return {
-      id: t.id,
-      createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
-      paymentDate: t.paymentDate,
-      studentId: t.studentId,
-      studentName: student?.name || 'Học viên',
-      className: activeEnroll?.class?.name || '',
-      amount: t.amount,
-      paymentMethod: t.paymentMethod,
-      revenueCategory: 'Học phí offline',
-      notes: t.notes || '',
-      isReconciled: t.isReconciled,
-      isInvoiced: t.isInvoiced,
-      senderName: t.notes?.match(/phụ huynh:?\s*(.*)$/i)?.[1] || '',
-      source: t.source || 'manual'
-    };
-  } else {
-    return {
-      id: t.id,
-      createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt,
-      paymentDate: t.paymentDate,
-      studentId: t.studentId || '',
-      studentName: student?.name || 'Khách vãng lai',
-      className: activeEnroll?.class?.name || '',
-      amount: t.amount,
-      paymentMethod: t.paymentMethod,
-      revenueCategory: t.category,
-      notes: t.description || '',
-      isReconciled: t.isReconciled,
-      isInvoiced: false,
-      senderName: '',
-      source: 'manual'
-    };
-  }
-}
-
 // GET all transactions
 financeRouter.get('/transactions', async (req, res) => {
   try {
@@ -95,10 +40,46 @@ financeRouter.get('/transactions', async (req, res) => {
     });
 
     // Format tuition transactions
-    const formattedTuition = await Promise.all(tuitionTx.map(t => formatTransaction(t)));
+    const formattedTuition = tuitionTx.map(t => {
+      const activeEnroll = t.student.enrollments[0];
+      return {
+        id: t.id,
+        createdAt: t.createdAt.toISOString(),
+        paymentDate: t.paymentDate,
+        studentId: t.studentId,
+        studentName: t.student.name,
+        className: activeEnroll?.class?.name || '',
+        amount: t.amount,
+        paymentMethod: t.paymentMethod,
+        revenueCategory: 'Học phí offline',
+        notes: t.notes || '',
+        isReconciled: t.isReconciled,
+        isInvoiced: t.isInvoiced,
+        senderName: t.notes?.match(/phụ huynh:?\s*(.*)$/i)?.[1] || '',
+        source: t.source || 'manual'
+      };
+    });
 
     // Format other revenue
-    const formattedOther = await Promise.all(otherRev.map(t => formatTransaction(t)));
+    const formattedOther = otherRev.map(t => {
+      const activeEnroll = t.student?.enrollments[0];
+      return {
+        id: t.id,
+        createdAt: t.createdAt.toISOString(),
+        paymentDate: t.paymentDate,
+        studentId: t.studentId || '',
+        studentName: t.student?.name || 'Khách vãng lai',
+        className: activeEnroll?.class?.name || '',
+        amount: t.amount,
+        paymentMethod: t.paymentMethod,
+        revenueCategory: t.category,
+        notes: t.description || '',
+        isReconciled: t.isReconciled,
+        isInvoiced: false,
+        senderName: '',
+        source: 'manual'
+      };
+    });
 
     // Combine and sort by date descending
     const combined = [...formattedTuition, ...formattedOther].sort((a, b) => {
@@ -217,8 +198,7 @@ financeRouter.post('/transactions', async (req, res) => {
       }
     });
 
-    const formatted = await formatTransaction(saved);
-    res.status(201).json(formatted);
+    res.status(201).json(saved);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -311,8 +291,7 @@ financeRouter.patch('/transactions/:id/reconcile', async (req, res) => {
       });
     }
 
-    const formatted = await formatTransaction(updated);
-    res.json(formatted);
+    res.json(updated);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -328,8 +307,7 @@ financeRouter.patch('/transactions/:id/invoice', requireAdmin, async (req, res) 
       where: { id },
       data: { isInvoiced }
     });
-    const formatted = await formatTransaction(updated);
-    res.json(formatted);
+    res.json(updated);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

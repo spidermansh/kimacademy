@@ -215,7 +215,7 @@ describe('Kim Academy v2 - Phase 4B Inventory Business Test Cases', () => {
     // Create student
     const student = await prisma.student.create({
       data: {
-        code: 'HV-TEST-AN',
+        code: 'STD-INV-01',
         name: 'Nguyễn Văn An',
         vietnameseName: 'Nguyễn Văn An',
         englishName: 'An',
@@ -280,7 +280,7 @@ describe('Kim Academy v2 - Phase 4B Inventory Business Test Cases', () => {
     // Create staff member
     const staff = await prisma.staffMember.create({
       data: {
-        code: 'NV-TEST-B',
+        code: 'STF-INV-02',
         name: 'Nhân Viên B',
         role: 'office',
         startDate: '2026-06-01',

@@ -2,11 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Class, StaffMember } from '../../shared/types';
 import { api } from '../../shared/utils';
 import { useToast } from '../components/Toast';
-import * as XLSX from 'xlsx-js-style';
 import { 
   Plus, Pencil, Trash2, BookOpen, Monitor, Users, X, Save, ChevronDown,
-  MapPin, Wallet, TrendingUp, Clock, AlertTriangle, Activity,
-  FileSpreadsheet, Download, CalendarDays
+  MapPin, Wallet, TrendingUp, Clock, AlertTriangle, Activity
 } from 'lucide-react';
 
 interface ClassFormData {
@@ -23,7 +21,6 @@ interface ClassFormData {
   defaultFee: string;
   scheduleDays: string[];
   scheduleTime: string;
-  dayTimes: Record<string, string>;
 }
 
 const EMPTY_FORM: ClassFormData = {
@@ -40,117 +37,9 @@ const EMPTY_FORM: ClassFormData = {
   defaultFee: '',
   scheduleDays: [],
   scheduleTime: '',
-  dayTimes: {},
 };
 
 const DAYS_OF_WEEK = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'];
-
-const TIME_OPTIONS: string[] = [];
-for (let hour = 7; hour <= 21; hour++) {
-  const hh = hour.toString().padStart(2, '0');
-  TIME_OPTIONS.push(`${hh}:00`, `${hh}:15`, `${hh}:30`, `${hh}:45`);
-}
-TIME_OPTIONS.push('22:00');
-
-const parseTimeRange = (rangeStr: string): { start: string; end: string } => {
-  if (!rangeStr) return { start: '18:00', end: '19:30' };
-  const parts = rangeStr.split('-');
-  if (parts.length === 2) {
-    return {
-      start: parts[0].trim(),
-      end: parts[1].trim()
-    };
-  }
-  return { start: '18:00', end: '19:30' };
-};
-
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-
-const parseDayTimes = (scheduleTimeStr: string, scheduleDaysArr: string[]): Record<string, string> => {
-  const result: Record<string, string> = {};
-  if (!scheduleTimeStr) {
-    scheduleDaysArr.forEach(day => {
-      result[day] = '18:00 - 19:30';
-    });
-    return result;
-  }
-  
-  const hasDayFormat = scheduleTimeStr.includes('(') && scheduleTimeStr.includes(')');
-  
-  if (!hasDayFormat) {
-    scheduleDaysArr.forEach(day => {
-      result[day] = scheduleTimeStr || '18:00 - 19:30';
-    });
-    return result;
-  }
-  
-  const parts = scheduleTimeStr.split(',');
-  parts.forEach(part => {
-    const match = part.match(/(.*?)\s*\((.*?)\)/);
-    if (match) {
-      const time = match[1].trim();
-      const day = match[2].trim();
-      result[day] = time || '18:00 - 19:30';
-    }
-  });
-  
-  scheduleDaysArr.forEach(day => {
-    if (!result[day]) {
-      result[day] = '18:00 - 19:30';
-    }
-  });
-  
-  return result;
-};
-
-const buildScheduleTime = (dayTimesObj: Record<string, string>, scheduleDaysArr: string[]): string => {
-  if (scheduleDaysArr.length === 0) return '';
-  
-  const firstTime = dayTimesObj[scheduleDaysArr[0]] || '';
-  const allSame = scheduleDaysArr.every(day => (dayTimesObj[day] || '') === firstTime);
-  
-  if (allSame) {
-    return firstTime;
-  }
-  
-  return scheduleDaysArr
-    .map(day => `${dayTimesObj[day] || ''} (${day})`)
-    .join(', ');
-};
-
-const getClassTimeForDay = (cls: any, day: string): string => {
-  if (!cls.scheduleTime) return '';
-  const timeStr = cls.scheduleTime;
-  const hasDayFormat = timeStr.includes('(') && timeStr.includes(')');
-  
-  if (!hasDayFormat) {
-    return timeStr;
-  }
-  
-  const parts = timeStr.split(',');
-  for (const part of parts) {
-    const match = part.match(/(.*?)\s*\((.*?)\)/);
-    if (match) {
-      const time = match[1].trim();
-      const partDay = match[2].trim();
-      if (partDay.toLowerCase() === day.toLowerCase()) {
-        return time;
-      }
-    }
-  }
-  return '';
-};
-
-const getStartTime = (timeStr: string): string => {
-  if (!timeStr) return '23:59';
-  const match = timeStr.match(/^(\d{1,2}):(\d{2})/);
-  if (match) {
-    const hh = match[1].padStart(2, '0');
-    const mm = match[2];
-    return `${hh}:${mm}`;
-  }
-  return '23:59';
-};
 
 export default function ClassManagement({ 
   students,
@@ -179,7 +68,6 @@ export default function ClassManagement({
   const [renameReason, setRenameReason] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
   const [classHistoryMap, setClassHistoryMap] = useState<Record<string, any[]>>({});
-  const [viewMode, setViewMode] = useState<'list' | 'timetable'>('list');
 
   useEffect(() => {
     api.getStaff().then((data: StaffMember[]) => {
@@ -231,20 +119,13 @@ export default function ClassManagement({
 
   const openAdd = () => {
     setEditingClass(null);
-    setForm({
-      ...EMPTY_FORM,
-      dayTimes: {},
-    });
+    setForm(EMPTY_FORM);
     setRenameReason('');
     setEffectiveDate(new Date().toISOString().slice(0, 10));
     setShowForm(true);
   };
 
   const openEdit = (cls: Class) => {
-    const days = cls.scheduleDays || [];
-    const time = cls.scheduleTime || '';
-    const parsedDayTimes = parseDayTimes(time, days);
-
     setEditingClass(cls);
     setForm({
       code: cls.code || '',
@@ -258,10 +139,9 @@ export default function ClassManagement({
       maxStudents: cls.maxStudents || 15,
       status: cls.status || 'active',
       defaultFee: cls.defaultFee ? new Intl.NumberFormat('en-US').format(cls.defaultFee) : '',
-      scheduleDays: days,
-      scheduleTime: time,
-      dayTimes: parsedDayTimes,
-    } as any);
+      scheduleDays: cls.scheduleDays || [],
+      scheduleTime: cls.scheduleTime || '',
+    });
     setRenameReason('');
     setEffectiveDate(new Date().toISOString().slice(0, 10));
     setShowForm(true);
@@ -269,24 +149,10 @@ export default function ClassManagement({
 
   const toggleDay = (day: string) => {
     setForm(f => {
-      const isSelected = f.scheduleDays.includes(day);
-      const nextDays = isSelected
+      const days = f.scheduleDays.includes(day)
         ? f.scheduleDays.filter(d => d !== day)
         : [...f.scheduleDays, day];
-      
-      const nextDayTimes = { ...f.dayTimes };
-      if (isSelected) {
-        delete nextDayTimes[day];
-      } else {
-        const existingTime = Object.values(f.dayTimes).find(t => t) || '18:00 - 19:30';
-        nextDayTimes[day] = existingTime;
-      }
-      
-      return { 
-        ...f, 
-        scheduleDays: nextDays,
-        dayTimes: nextDayTimes
-      };
+      return { ...f, scheduleDays: days };
     });
   };
 
@@ -305,29 +171,11 @@ export default function ClassManagement({
       toast.warning('Thiếu thông tin', 'Vui lòng nhập lý do đổi tên lớp!');
       return;
     }
-    
-    // Validate day times if days are selected
-    if (form.scheduleDays.length > 0) {
-      for (const day of form.scheduleDays) {
-        const timeVal = form.dayTimes[day] || '';
-        if (!timeVal.trim()) {
-          toast.warning('Thiếu thông tin', `Vui lòng chọn khung giờ dạy cho ${day}!`);
-          return;
-        }
-        const { start, end } = parseTimeRange(timeVal);
-        if (start && end && start >= end) {
-          toast.warning('Dữ liệu không hợp lệ', `Khung giờ dạy của ${day} không hợp lệ (Giờ kết thúc phải sau giờ bắt đầu)!`);
-          return;
-        }
-      }
-    }
-
     setSaving(true);
     try {
       const feeNumeric = parseInt(form.defaultFee.replace(/\D/g, '') || '0', 10);
-      const computedScheduleTime = buildScheduleTime(form.dayTimes, form.scheduleDays);
-      const computedSchedule = form.scheduleDays.length > 0 && computedScheduleTime
-        ? `${form.scheduleDays.join(', ')} — ${computedScheduleTime}`
+      const computedSchedule = form.scheduleDays.length > 0 && form.scheduleTime
+        ? `${form.scheduleDays.join(', ')} — ${form.scheduleTime}`
         : form.schedule || '';
 
       const payload = {
@@ -343,7 +191,7 @@ export default function ClassManagement({
         status: form.status,
         defaultFee: feeNumeric,
         scheduleDays: form.scheduleDays,
-        scheduleTime: computedScheduleTime,
+        scheduleTime: form.scheduleTime.trim(),
         renameReason: isRenamed ? renameReason.trim() : undefined,
         effectiveDate: isRenamed ? effectiveDate : undefined,
       };
@@ -416,156 +264,6 @@ export default function ClassManagement({
     ? classes.filter(c => c.teacher?.toLowerCase().trim() === userName?.toLowerCase().trim())
     : classes;
 
-  const exportWeeklyTimetable = () => {
-    try {
-      let maxClassesCount = 0;
-      DAYS_OF_WEEK.forEach(day => {
-        const count = displayClasses.filter(c => c.status !== 'ended' && c.scheduleDays?.includes(day)).length;
-        if (count > maxClassesCount) {
-          maxClassesCount = count;
-        }
-      });
-
-      const headers = DAYS_OF_WEEK;
-      const rowsData: any[][] = [];
-      for (let r = 0; r < maxClassesCount; r++) {
-        const rowCells = DAYS_OF_WEEK.map(day => {
-          const dayClasses = displayClasses.filter(c => c.status !== 'ended' && c.scheduleDays?.includes(day));
-          const sortedDayClasses = [...dayClasses].sort((a, b) => {
-            const timeA = getClassTimeForDay(a, day);
-            const timeB = getClassTimeForDay(b, day);
-            return getStartTime(timeA).localeCompare(getStartTime(timeB));
-          });
-
-          const c = sortedDayClasses[r];
-          if (!c) return '';
-
-          const time = getClassTimeForDay(c, day);
-          const enrolledCount = getStudentsInClass(c.name).length;
-          const max = c.maxStudents || 15;
-          
-          return `${time || 'Chưa gán giờ'}\nLớp: ${c.name} (${c.code || ''})\nGV: ${c.teacher || 'Chưa gán'}\nPhòng: ${c.room || '—'}\nSĩ số: ${enrolledCount}/${max}`;
-        });
-        rowsData.push(rowCells);
-      }
-
-      const title = 'THỜI KHÓA BIỂU TUẦN TRUNG TÂM';
-      const subtitle = `Xuất ngày: ${new Date().toLocaleDateString('vi-VN')}`;
-
-      const aoaData = [
-        [title],
-        [subtitle],
-        [],
-        headers,
-        ...rowsData
-      ];
-
-      const ws = XLSX.utils.aoa_to_sheet(aoaData);
-      const totalCols = headers.length;
-
-      ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } }
-      ];
-
-      const colWidths = Array(totalCols).fill({ wch: 22 });
-      ws['!cols'] = colWidths;
-
-      const titleRef = XLSX.utils.encode_cell({ r: 0, c: 0 });
-      if (ws[titleRef]) {
-        ws[titleRef].s = {
-          font: { bold: true, size: 16, color: { rgb: '4F46E5' } },
-          alignment: { horizontal: 'center' }
-        };
-      }
-
-      const subRef = XLSX.utils.encode_cell({ r: 1, c: 0 });
-      if (ws[subRef]) {
-        ws[subRef].s = {
-          font: { italic: true, size: 10, color: { rgb: '475569' } },
-          alignment: { horizontal: 'center' }
-        };
-      }
-
-      for (let c = 0; c < totalCols; c++) {
-        const cellRef = XLSX.utils.encode_cell({ r: 3, c });
-        if (ws[cellRef]) {
-          ws[cellRef].s = {
-            fill: { fgColor: { rgb: '4F46E5' } },
-            font: { color: { rgb: 'FFFFFF' }, bold: true, size: 11 },
-            alignment: { horizontal: 'center', vertical: 'center' },
-            border: {
-              top: { style: 'medium', color: { rgb: 'E2E8F0' } },
-              bottom: { style: 'medium', color: { rgb: 'E2E8F0' } },
-              left: { style: 'thin', color: { rgb: 'E2E8F0' } },
-              right: { style: 'thin', color: { rgb: 'E2E8F0' } }
-            }
-          };
-        }
-      }
-
-      for (let r = 4; r < aoaData.length; r++) {
-        for (let c = 0; c < totalCols; c++) {
-          const cellRef = XLSX.utils.encode_cell({ r, c });
-          if (!ws[cellRef]) continue;
-
-          const cellVal = ws[cellRef].v;
-          if (!cellVal) {
-            ws[cellRef].s = {
-              border: {
-                top: { style: 'thin', color: { rgb: 'E2E8F0' } },
-                bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
-                left: { style: 'thin', color: { rgb: 'E2E8F0' } },
-                right: { style: 'thin', color: { rgb: 'E2E8F0' } }
-              }
-            };
-            continue;
-          }
-
-          ws[cellRef].s = {
-            font: { size: 9 },
-            alignment: { vertical: 'top', horizontal: 'left', wrapText: true },
-            fill: { fgColor: { rgb: 'F8FAFC' } },
-            border: {
-              top: { style: 'thin', color: { rgb: 'CBD5E1' } },
-              bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-              left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-              right: { style: 'thin', color: { rgb: 'CBD5E1' } }
-            }
-          };
-        }
-      }
-
-      const rowHeights = [{ hpx: 30 }, { hpx: 20 }, { hpx: 10 }, { hpx: 25 }];
-      for (let r = 4; r < aoaData.length; r++) {
-        rowHeights.push({ hpx: 80 });
-      }
-      ws['!rows'] = rowHeights;
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'ThoiKhoaBieuTuan');
-      XLSX.writeFile(wb, 'Thoi_Khoa_Bieu_Tuan_Trung_Tam.xlsx');
-      toast.success('Xuất file thành công!', 'Thời khóa biểu tuần trung tâm');
-    } catch (err: any) {
-      toast.error('Lỗi xuất Excel', err.message);
-    }
-  };
-
-  const handleTimetableCardClick = (cls: Class) => {
-    setViewMode('list');
-    setExpandedClass(cls.id);
-    setTimeout(() => {
-      const element = document.getElementById(`class-card-${cls.id}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        element.classList.add('ring-4', 'ring-indigo-500', 'ring-offset-2', 'scale-[1.02]');
-        setTimeout(() => {
-          element.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-2', 'scale-[1.02]');
-        }, 2000);
-      }
-    }, 100);
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -585,44 +283,6 @@ export default function ClassManagement({
         )}
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            className={`px-4 py-2 text-sm font-semibold rounded-xl transition-all cursor-pointer ${
-              viewMode === 'list'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
-            }`}
-          >
-            Danh sách lớp
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('timetable')}
-            className={`px-4 py-2 text-sm font-semibold rounded-xl transition-all cursor-pointer ${
-              viewMode === 'timetable'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
-            }`}
-          >
-            Thời khóa biểu tuần
-          </button>
-        </div>
-        {viewMode === 'timetable' && (
-          <button
-            type="button"
-            onClick={exportWeeklyTimetable}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-xl shadow-sm transition-colors cursor-pointer"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            Xuất Excel thời khóa biểu
-          </button>
-        )}
-      </div>
-
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center h-40">
@@ -631,7 +291,7 @@ export default function ClassManagement({
       )}
 
       {/* Empty State */}
-      {viewMode === 'list' && !loading && classes.length === 0 && (
+      {!loading && classes.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
           <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-4" />
           <h3 className="text-slate-500 font-medium text-lg">Chưa có lớp học nào</h3>
@@ -640,8 +300,8 @@ export default function ClassManagement({
       )}
 
       {/* Class Grid */}
-      {viewMode === 'list' && !loading && displayClasses.length > 0 && (
-        <div id="class-list-grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      {!loading && displayClasses.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {displayClasses.map(cls => {
             const enrolled = getStudentsInClass(cls.name);
             const isExpanded = expandedClass === cls.id;
@@ -679,7 +339,7 @@ export default function ClassManagement({
               'bg-emerald-500/20 text-emerald-200 border-emerald-500/30';
 
             return (
-              <div key={cls.id} id={`class-card-${cls.id}`} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-all duration-500 flex flex-col justify-between">
+              <div key={cls.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col justify-between">
                 <div>
                   {/* Card Header */}
                   <div className="p-5 relative bg-gradient-to-r from-indigo-700 to-indigo-600">
@@ -873,84 +533,6 @@ export default function ClassManagement({
           })}
         </div>
       )}
-
-      {viewMode === 'timetable' && !loading && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm overflow-x-auto">
-          <div className="min-w-[1200px] grid grid-cols-7 gap-4">
-            {DAYS_OF_WEEK.map(day => {
-              const dayClasses = displayClasses.filter(c => c.status !== 'ended' && c.scheduleDays?.includes(day));
-              const sortedDayClasses = [...dayClasses].sort((a, b) => {
-                const timeA = getClassTimeForDay(a, day);
-                const timeB = getClassTimeForDay(b, day);
-                return getStartTime(timeA).localeCompare(getStartTime(timeB));
-              });
-
-              return (
-                <div key={day} className="flex flex-col gap-3 min-h-[400px] bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
-                  {/* Day Header */}
-                  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-center">
-                    <h4 className="text-xs font-bold text-indigo-700 uppercase tracking-wider">{day}</h4>
-                    <span className="text-[10px] text-indigo-400 font-bold">{sortedDayClasses.length} lớp</span>
-                  </div>
-
-                  {/* Classes Stack */}
-                  <div className="flex-1 flex flex-col gap-2.5">
-                    {sortedDayClasses.length === 0 ? (
-                      <div className="flex-1 flex items-center justify-center border border-dashed border-slate-200 rounded-xl py-8">
-                        <span className="text-[11px] text-slate-400 italic font-medium">Không có lớp</span>
-                      </div>
-                    ) : (
-                      sortedDayClasses.map(c => {
-                        const time = getClassTimeForDay(c, day);
-                        const enrolledCount = getStudentsInClass(c.name).length;
-                        const max = c.maxStudents || 15;
-                        const isFull = enrolledCount >= max;
-
-                        return (
-                          <div
-                            key={`${c.id}-${day}`}
-                            onClick={() => handleTimetableCardClick(c)}
-                            className="bg-white border border-slate-200 hover:border-indigo-400 hover:shadow-sm rounded-xl p-3 text-left transition-all duration-300 cursor-pointer group space-y-2 relative overflow-hidden"
-                          >
-                            <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
-                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100/50 rounded-lg px-2 py-0.5 w-fit">
-                              <Clock className="w-3 h-3 text-indigo-500" />
-                              <span>{time || 'Chưa gán giờ'}</span>
-                            </div>
-                            <div className="space-y-0.5">
-                              <h5 className="text-xs font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate" title={c.name}>
-                                {c.name}
-                              </h5>
-                              <p className="text-[10px] font-mono text-slate-400 font-bold uppercase">{c.code}</p>
-                            </div>
-                            <div className="space-y-1 text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-100">
-                              <div className="flex items-center gap-1">
-                                <Users className="w-3 h-3 text-slate-400" />
-                                <span>GV: {c.teacher || 'Chưa gán'}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3 text-slate-400" />
-                                <span>Phòng: {c.room || '—'}</span>
-                              </div>
-                              <div className="flex items-center justify-between mt-1 text-[10px]">
-                                <span className="font-semibold text-slate-400">Sĩ số:</span>
-                                <span className={`font-bold ${isFull ? 'text-rose-600' : 'text-slate-600'}`}>
-                                  {enrolledCount}/{max}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
 
       {/* Add/Edit Modal */}
       {showForm && (
@@ -1161,92 +743,26 @@ export default function ClassManagement({
                   </div>
                 </div>
 
-                {/* Khung giờ dạy cho từng ngày đã chọn */}
-                {form.scheduleDays.length > 0 && (
-                  <div className="col-span-2 space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Khung giờ dạy theo ngày học
-                    </label>
-                    <div className="space-y-3.5">
-                      {form.scheduleDays.map(day => {
-                        const { start, end } = parseTimeRange(form.dayTimes[day] || '18:00 - 19:30');
-                        return (
-                          <div key={day} className="flex items-center gap-3">
-                            <span className="w-20 text-xs font-bold text-slate-600 bg-slate-200/60 border border-slate-300/40 rounded px-2.5 py-1.5 text-center shrink-0">
-                              {day}
-                            </span>
-                            <div className="flex-1 flex items-center gap-2">
-                              <select
-                                value={start || '18:00'}
-                                onChange={e => {
-                                  const newStart = e.target.value;
-                                  const newEnd = end || '19:30';
-                                  setForm(f => ({
-                                    ...f,
-                                    dayTimes: { ...f.dayTimes, [day]: `${newStart} - ${newEnd}` }
-                                  }));
-                                }}
-                                className="flex-1 px-3 py-1.5 border border-slate-300 bg-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-                              >
-                                {TIME_OPTIONS.map(t => (
-                                  <option key={`start-${t}`} value={t}>{t}</option>
-                                ))}
-                              </select>
-                              <span className="text-xs text-slate-400 font-bold">đến</span>
-                              <select
-                                value={end || '19:30'}
-                                onChange={e => {
-                                  const newStart = start || '18:00';
-                                  const newEnd = e.target.value;
-                                  setForm(f => ({
-                                    ...f,
-                                    dayTimes: { ...f.dayTimes, [day]: `${newStart} - ${newEnd}` }
-                                  }));
-                                }}
-                                className="flex-1 px-3 py-1.5 border border-slate-300 bg-white rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-                              >
-                                {TIME_OPTIONS.map(t => (
-                                  <option key={`end-${t}`} value={t}>{t}</option>
-                                ))}
-                              </select>
-                            </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const curTime = form.dayTimes[day] || '';
-                              if (curTime) {
-                                setForm(f => {
-                                  const nextDayTimes = { ...f.dayTimes };
-                                  f.scheduleDays.forEach(d => {
-                                    nextDayTimes[d] = curTime;
-                                  });
-                                  return { ...f, dayTimes: nextDayTimes };
-                                });
-                                toast.success('Đã sao chép khung giờ', `Áp dụng "${curTime}" cho tất cả các ngày đã chọn.`);
-                              } else {
-                                toast.warning('Chưa có dữ liệu', 'Vui lòng điền khung giờ dạy trước khi sao chép.');
-                              }
-                            }}
-                            title="Sao chép khung giờ này cho tất cả các ngày khác"
-                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 px-2 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
-                          >
-                            Áp dụng cho tất cả
-                          </button>
-                        </div>
-                      );
-                    })}
-                    </div>
-                  </div>
-                )}
+                {/* Khung giờ học */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">Khung giờ dạy</label>
+                  <input
+                    type="text"
+                    value={form.scheduleTime}
+                    onChange={e => setForm(f => ({ ...f, scheduleTime: e.target.value }))}
+                    placeholder="VD: 18:00 - 19:30, 08:30 - 10:00..."
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                </div>
 
                 {/* Xem trước lịch học gộp */}
-                {form.scheduleDays.length > 0 && (
+                {(form.scheduleDays.length > 0 || form.scheduleTime) && (
                   <div className="col-span-2 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
                     <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-1">
                       Lịch học hiển thị (Tự động gộp)
                     </p>
                     <p className="text-xs font-black text-indigo-900">
-                      {form.scheduleDays.join(', ')} — {buildScheduleTime(form.dayTimes, form.scheduleDays)}
+                      {form.scheduleDays.join(', ')} {form.scheduleTime && `— ${form.scheduleTime}`}
                     </p>
                   </div>
                 )}

@@ -55,7 +55,7 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
     // Create a dummy staff member as teacher
     const teacher = await prisma.staffMember.create({
       data: {
-        code: 'GV-A',
+        code: 'TCH-001',
         name: 'Giáo Viên A',
         role: 'teacher',
         startDate: '2026-06-01',
@@ -69,7 +69,7 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
     // Re-create teacher since database was truncated
     const teacher = await prisma.staffMember.create({
       data: {
-        code: 'GV-A',
+        code: 'TCH-002',
         name: 'Giáo Viên A',
         role: 'teacher',
         startDate: '2026-06-01',
@@ -652,15 +652,13 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
 
   // 16. Cập nhật học phí Prospective (Áp dụng từ bây giờ)
   it('16. should apply enrollment fee change prospectively', async () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
-    const todayStr = today.toISOString().slice(0, 10);
-    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayStr = yesterdayDate.toISOString().slice(0, 10);
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrowStr = tomorrowDate.toISOString().slice(0, 10);
 
     // Create student
     const student = await StudentService.createStudent({
@@ -773,7 +771,7 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
     expect(history[0].mode).toBe('prospective');
 
     // 2. Attendance feeApplied:
-    // Yesterday (yesterdayStr) must keep 100,000
+    // Yesterday must keep 100,000
     const attYesterday = await prisma.attendanceRecord.findFirst({
       where: { enrollmentId: enrollment.id, date: yesterdayStr }
     });
@@ -805,12 +803,10 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
 
   // 17. Cập nhật học phí Retroactive (Áp dụng toàn bộ)
   it('17. should apply enrollment fee change retroactively', async () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayStr = yesterdayDate.toISOString().slice(0, 10);
 
     // Create student
     const student = await StudentService.createStudent({
@@ -899,7 +895,7 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
     expect(updatedEnroll?.feePerSession).toBe(150000);
 
     // 2. Attendance feeApplied:
-    // Yesterday (yesterdayStr) must be updated to 150,000
+    // Yesterday must be updated to 150,000
     const attYesterday = await prisma.attendanceRecord.findFirst({
       where: { enrollmentId: enrollment.id, date: yesterdayStr }
     });

@@ -23,16 +23,15 @@ describe('Kim Academy v2 - Parity Recovery Services Test Suite', () => {
       { id: 'ldg-1', studentId: 'std-1', enrollmentId: 'enr-1', totalPaid: 1500000, totalSpent: 1800000, balance: -300000, sessionsRemaining: -2 }
     ];
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-
     const mockAttendance = [
-      { id: 'att-1', studentId: 'std-1', classId: 'cls-1', enrollmentId: 'enr-1', date: todayStr, status: 'present', sessionsDeducted: 1, feeApplied: 150000 }
+      { id: 'att-1', studentId: 'std-1', classId: 'cls-1', enrollmentId: 'enr-1', date: '2026-06-20', status: 'present', sessionsDeducted: 1, feeApplied: 150000 }
     ];
 
     const mockTransactions = [
-      { id: 'tx-1', studentId: 'std-1', amount: 1500000, paymentDate: todayStr, isReconciled: false }
+      { id: 'tx-1', studentId: 'std-1', amount: 1500000, paymentDate: '2026-06-20', isReconciled: false }
     ];
 
+    const todayStr = new Date().toISOString().slice(0, 10);
     const mockLeads = [
       { id: 'led-1', studentName: 'Vũ Quốc Minh', parentPhone: '0903334455', status: 'test_scheduled', testScheduleDate: todayStr }
     ];

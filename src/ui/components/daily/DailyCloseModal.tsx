@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, CheckSquare, AlertTriangle, AlertCircle, RefreshCw, CheckCircle2, ChevronRight, Info } from 'lucide-react';
 import { Student, Class, Transaction, Expense, AttendanceRecord, DailyCloseRecord, SystemParameter } from '../../../shared/types';
-import { api, formatCurrency, formatDateKey, getRecentBusinessDates, formatDate, isDayMatch } from '../../../shared/utils';
+import { api, formatCurrency, formatDateKey, getRecentBusinessDates, formatDate } from '../../../shared/utils';
 import { computeDayOverview } from '../../../shared/business/dashboard';
 import { BusinessAlert } from '../../../shared/business/alerts';
 
@@ -82,11 +82,21 @@ export default function DailyCloseModal({
     const parts = selectedDate.split('-');
     const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     const dayOfWeek = dateObj.getDay();
+    const VIET_DAY_MAP: Record<number, string[]> = {
+      0: ['cn', 'chủ nhật'],
+      1: ['thứ 2', 't2', 'thứ hai'],
+      2: ['thứ 3', 't3', 'thứ ba'],
+      3: ['thứ 4', 't4', 'thứ tư'],
+      4: ['thứ 5', 't5', 'thứ năm'],
+      5: ['thứ 6', 't6', 'thứ sáu'],
+      6: ['thứ 7', 't7', 'thứ bảy'],
+    };
+    const todayNames = VIET_DAY_MAP[dayOfWeek] || [];
     
     const scheduled = classes.filter(cls => {
       if (cls.status !== 'active' || cls.type === 'online') return false;
       const days = cls.scheduleDays || [];
-      return days.some(d => isDayMatch(d, dayOfWeek));
+      return days.some(d => todayNames.some(tn => d.toLowerCase().includes(tn)));
     });
 
     const unattended = scheduled.filter(cls => {

@@ -54,7 +54,6 @@ async function buildReportParams(filters: any = {}) {
     const activeEnroll = enrollmentsRaw.find(e => e.studentId === s.id && e.isActive);
     return {
       id: s.id,
-      code: s.code,
       name: s.name,
       vietnameseName: s.vietnameseName,
       englishName: s.englishName,
@@ -77,7 +76,6 @@ async function buildReportParams(filters: any = {}) {
     const teacherName = staffMap.get(c.teacherId) || '';
     return {
       id: c.id,
-      code: c.code,
       name: c.name,
       type: c.type as any,
       teacher: teacherName,
@@ -164,7 +162,6 @@ async function buildReportParams(filters: any = {}) {
 
   const staff = staffRaw.map(s => ({
     id: s.id,
-    code: s.code,
     name: s.name,
     role: s.role as any,
     phone: s.phone || '',
@@ -379,7 +376,7 @@ async function setupReportTestData() {
   // Create mock teacher
   const teacher = await prisma.staffMember.create({
     data: {
-      code: 'STAFF-REPORT-TEACHER',
+      code: 'TCH-RPT-01',
       name: 'Giáo Viên Báo Cáo',
       role: 'teacher',
       startDate: '2026-06-01',
@@ -389,7 +386,7 @@ async function setupReportTestData() {
   // Create mock student
   const student = await prisma.student.create({
     data: {
-      code: 'HV-REPORT-STUDENT',
+      code: 'STD-RPT-01',
       name: 'Nguyễn Văn Báo Cáo',
       vietnameseName: 'Nguyễn Văn Báo Cáo',
       englishName: 'Report Student',
@@ -402,7 +399,7 @@ async function setupReportTestData() {
   // Create mock class
   const cls = await prisma.class.create({
     data: {
-      code: 'LH-REPORT-CLASS',
+      code: 'CLS-RPT-01',
       name: 'Lớp Báo Cáo Starter',
       teacherId: teacher.id,
       defaultFeePerSession: 150000,
@@ -499,7 +496,7 @@ async function setupReportTestData() {
   // Create mock student with debt
   const studentDebt = await prisma.student.create({
     data: {
-      code: 'HV-DEBT-STUDENT',
+      code: 'STD-RPT-02',
       name: 'Học Viên Nợ Phí',
       vietnameseName: 'Học Viên Nợ Phí',
       englishName: 'Debt Student',
@@ -689,7 +686,6 @@ describe('Kim Academy v3 - Report Engine Tests', () => {
     const { computeTuitionSummary } = await import('../../src/shared/business/tuition');
     const mockStudent = {
       id: 'student-multi',
-      code: 'HV-TEST-MULTI',
       name: 'Học Sinh Song Song',
       vietnameseName: 'Học Sinh Song Song',
       englishName: 'Parallel Student',

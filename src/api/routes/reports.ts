@@ -97,7 +97,6 @@ reportsRouter.post('/reports/run', async (req, res) => {
       const activeEnroll = enrollmentsRaw.find(e => e.studentId === s.id && e.isActive);
       return {
         id: s.id,
-        code: s.code,
         name: s.name,
         vietnameseName: s.vietnameseName,
         englishName: s.englishName,
@@ -120,7 +119,6 @@ reportsRouter.post('/reports/run', async (req, res) => {
       const teacherName = staffMap.get(c.teacherId) || '';
       return {
         id: c.id,
-        code: c.code,
         name: c.name,
         type: c.type as any,
         teacher: teacherName,
@@ -210,7 +208,6 @@ reportsRouter.post('/reports/run', async (req, res) => {
 
     const staff = staffRaw.map(s => ({
       id: s.id,
-      code: s.code,
       name: s.name,
       role: s.role as any,
       phone: s.phone || '',

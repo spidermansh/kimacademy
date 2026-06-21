@@ -1,6 +1,6 @@
 import { Student, Transaction, AttendanceRecord, Class, StaffMember, TeachingLog, SalaryAdvance, MonthlySalary, Expense, SystemParameter, Enrollment } from '../types';
 import { computeTuitionSummary } from './tuition';
-import { formatDate, isDayMatch } from '../utils';
+import { formatDate } from '../utils';
 
 export interface BusinessAlert {
   id: string;
@@ -199,6 +199,16 @@ export function computeAlerts(
 
   // ─── B. LỚP HỌC ─────────────────────────────────────────────────────────────
   const dayOfWeek = today.getDay();
+  const VIET_DAY_MAP: Record<number, string[]> = {
+    0: ['cn', 'chủ nhật'],
+    1: ['thứ 2', 't2', 'thứ hai'],
+    2: ['thứ 3', 't3', 'thứ ba'],
+    3: ['thứ 4', 't4', 'thứ tư'],
+    4: ['thứ 5', 't5', 'thứ năm'],
+    5: ['thứ 6', 't6', 'thứ sáu'],
+    6: ['thứ 7', 't7', 'thứ bảy'],
+  };
+  const todayNames = VIET_DAY_MAP[dayOfWeek] || [];
 
   classes.forEach(cls => {
     if (cls.status === 'ended') return;
@@ -261,7 +271,7 @@ export function computeAlerts(
     }
 
     // 5. Lớp có lịch học hôm nay nhưng chưa điểm danh
-    const hasToday = days.some((d: string) => isDayMatch(d, dayOfWeek));
+    const hasToday = days.some((d: string) => todayNames.some(tn => d.toLowerCase().includes(tn)));
     if (cls.status === 'active' && hasToday) {
       const attendedToday = attendance.some(a => a.date === todayStr && (a.classId === cls.id || a.className === cls.name || a.classId === cls.name));
       if (!attendedToday) {

@@ -56,7 +56,6 @@ export interface FeeChangeLog {
 
 export interface Student {
   id: string;
-  code: string;
   name: string;
   vietnameseName: string;
   englishName: string;
@@ -84,12 +83,10 @@ export interface Student {
 
 export interface Class {
   id: string;
-  code: string;
   name: string;
   type: ClassType;
   schedule: string;
   teacher: string;
-  teacherName?: string;
   teacherId?: string;
   description: string;
   room?: string;
@@ -175,7 +172,6 @@ export interface Notification {
 
 export interface StaffMember {
   id: string;
-  code: string;
   name: string;
   role: 'teacher' | 'office' | 'teaching_assistant';
   phone: string;

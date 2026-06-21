@@ -23,10 +23,9 @@ export class StudentService {
       throw new Error('Student already exists');
     }
 
-    const code = (data as any).code || `HV-${data.name.replace(/\s+/g, '').toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const student = await prisma.student.create({
       data: {
-        code,
+        code: `STD-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
         name: data.name,
         vietnameseName: data.vietnameseName || data.name,
         englishName: data.englishName || '',
@@ -74,16 +73,14 @@ export class StudentService {
 
 export class ClassService {
   static async createClass(data: {
-    code?: string;
     name: string;
     teacherId: string;
     defaultFeePerSession: number;
     createdBy?: string;
   }) {
-    const code = data.code || `LH-${data.name.replace(/\s+/g, '').toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
     return prisma.class.create({
       data: {
-        code,
+        code: `CLS-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
         name: data.name,
         teacherId: data.teacherId,
         defaultFeePerSession: data.defaultFeePerSession,
@@ -340,10 +337,9 @@ export class AdmissionService {
       throw new Error('Student already exists');
     }
 
-    const code = `HV-${lead.studentName.replace(/\s+/g, '').toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const student = await prisma.student.create({
       data: {
-        code,
+        code: `STD-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
         name: lead.studentName,
         vietnameseName: lead.studentName,
         englishName: '',

@@ -57,7 +57,6 @@ payrollRouter.post('/staff', requireAdmin, async (req, res) => {
 
     const created = await prisma.staffMember.create({
       data: {
-        code: `NV-${Math.floor(100000 + Math.random() * 900000)}`,
         name: data.name,
         role: data.role,
         phone: data.phone || null,
@@ -315,28 +314,7 @@ payrollRouter.post('/teaching-logs', async (req, res) => {
       }
     });
 
-    const staff = await prisma.staffMember.findUnique({ where: { id: created.staffId } });
-    const cls = await prisma.class.findUnique({ where: { id: created.classId }, select: { name: true } });
-
-    const formatted = {
-      id: created.id,
-      date: created.date,
-      staffId: created.staffId,
-      staffName: staff?.name || '',
-      teacherId: created.staffId,
-      teacherName: staff?.name || '',
-      classId: created.classId,
-      className: cls?.name || 'Không rõ lớp',
-      sessions: created.sessions,
-      sessionsCount: created.sessions,
-      isSubstitute: created.isSubstitute,
-      hoursWorked: created.hoursWorked,
-      source: created.source,
-      note: created.note || '',
-      createdAt: created.createdAt
-    };
-
-    res.status(201).json(formatted);
+    res.status(201).json(created);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
