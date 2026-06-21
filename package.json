@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx run-dev.ts",
-    "build": "vite build && esbuild src/api/server.ts --bundle --platform=node --outfile=dist/server.js --format=esm --packages=external",
+    "build": "prisma generate && prisma db push && vite build && esbuild src/api/server.ts --bundle --platform=node --outfile=dist/server.js --format=esm --packages=external",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "test": "vitest run --fileParallelism=false",
