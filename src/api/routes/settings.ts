@@ -63,7 +63,7 @@ settingsRouter.put('/settings', requireAdmin, async (req, res) => {
           valueType,
           value: val,
           effectiveFrom: new Date().toISOString().slice(0, 10),
-          createdBy: req.user?.name || req.user?.username || 'admin'
+          createdBy: req.user?.name || req.user?.username || 'admin', createdById: req.user?.userId || null
         }
       });
     }
@@ -129,7 +129,7 @@ settingsRouter.post('/system-parameters', requireAdmin, async (req, res) => {
         valueType,
         value: stringVal,
         effectiveFrom: effectiveFrom || new Date().toISOString().slice(0, 10),
-        createdBy: req.user?.name || req.user?.username || 'admin'
+        createdBy: req.user?.name || req.user?.username || 'admin', createdById: req.user?.userId || null
       }
     });
 

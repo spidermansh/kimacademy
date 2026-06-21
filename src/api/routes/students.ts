@@ -70,7 +70,7 @@ studentsRouter.post('/students', requireAcademicRole, async (req, res) => {
           birthDate: data.birthYear ? `${data.birthYear}-01-01` : null,
           status: data.status || 'active',
           enrollDate: data.enrollDate || new Date().toISOString().slice(0, 10),
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
 
@@ -99,7 +99,7 @@ studentsRouter.post('/students', requireAcademicRole, async (req, res) => {
               feePerSession: fee,
               startDate: data.enrollDate || new Date().toISOString().slice(0, 10),
               isActive: true,
-              createdBy: req.user?.name || req.user?.username || 'unknown',
+              createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
               feeHistory: []
             }
           });
@@ -277,7 +277,7 @@ studentsRouter.post('/students/batch', requireAcademicRole, async (req, res) => 
             birthDate: data.birthYear ? `${data.birthYear}-01-01` : null,
             status: data.status || 'active',
             enrollDate: data.enrollDate || new Date().toISOString().slice(0, 10),
-            createdBy: req.user?.name || req.user?.username || 'import'
+            createdBy: req.user?.name || req.user?.username || 'import', createdById: req.user?.userId || null
           }
         });
 
@@ -306,7 +306,7 @@ studentsRouter.post('/students/batch', requireAcademicRole, async (req, res) => 
                 feePerSession: fee,
                 startDate: data.enrollDate || new Date().toISOString().slice(0, 10),
                 isActive: true,
-                createdBy: req.user?.name || req.user?.username || 'import',
+                createdBy: req.user?.name || req.user?.username || 'import', createdById: req.user?.userId || null,
                 feeHistory: []
               }
             });

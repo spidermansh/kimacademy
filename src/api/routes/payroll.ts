@@ -657,8 +657,8 @@ payrollRouter.get('/monthly-salaries', async (req, res) => {
       otherIncome: item.otherIncome,
       otherMonthlyAllowance: item.otherMonthlyAllowance,
       otherMonthlyAllowanceNote: item.otherMonthlyAllowanceNote,
-      otherSalary: item.otherIncome, // legacy
-      otherSalaryNote: item.notes, // legacy
+      otherSalary: item.otherIncome, // FE contract (SalaryDashboard đọc + gửi lại) — KHÔNG xóa
+      otherSalaryNote: item.notes, // FE contract (SalaryDashboard) — KHÔNG xóa
       kpiDeduction: item.kpiDeduction,
       grossSalary: item.grossSalary,
       socialInsuranceAmount: item.socialInsuranceAmount,
@@ -666,7 +666,6 @@ payrollRouter.get('/monthly-salaries', async (req, res) => {
       unemploymentInsuranceAmount: item.unemploymentInsuranceAmount,
       taxRate: item.taxRate,
       taxAmount: item.taxAmount,
-      tax: item.taxAmount, // legacy
       totalAdvance: item.totalAdvance,
       advanceApplied: item.advanceApplied,
       netSalary: item.netSalary,
@@ -700,7 +699,7 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
           startDate: `${month}-01`,
           endDate: `${month}-${String(lastDay).padStart(2, '0')}`,
           status: 'draft',
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
     }
@@ -789,7 +788,6 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
         unemploymentInsuranceAmount: savedItem.unemploymentInsuranceAmount,
         taxRate: savedItem.taxRate,
         taxAmount: savedItem.taxAmount,
-        tax: savedItem.taxAmount,
         totalAdvance: savedItem.totalAdvance,
         advanceApplied: savedItem.advanceApplied,
         netSalary: savedItem.netSalary,

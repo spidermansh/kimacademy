@@ -50,7 +50,7 @@ inventoryRouter.post('/inventory/categories', requireInventoryRole, async (req, 
         name,
         code: code || null,
         description: description || null,
-        createdBy: req.user?.name || req.user?.username || 'admin'
+        createdBy: req.user?.name || req.user?.username || 'admin', createdById: req.user?.userId || null
       }
     });
     res.status(201).json(created);
@@ -145,7 +145,7 @@ inventoryRouter.post('/inventory/items', requireInventoryRole, async (req, res) 
         defaultCostPrice: defaultCostPrice ? Number(defaultCostPrice) : 0,
         minStockLevel: minStockLevel ? Number(minStockLevel) : 0,
         description: description || null,
-        createdBy: req.user?.name || req.user?.username || 'admin'
+        createdBy: req.user?.name || req.user?.username || 'admin', createdById: req.user?.userId || null
       }
     });
 
@@ -350,7 +350,7 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, validateBody(
           paymentMethod: finalPaymentMethod || 'Tiền mặt',
           studentId: relatedStudentId,
           description: `Xuất bán ${item.name} (SL: ${qty}) cho học viên ${student?.name || ''}`,
-          createdBy: getActor(req)
+          createdBy: getActor(req), createdById: req.user?.userId || null
         }
       });
       revenueOtherId = rev.id;
@@ -378,7 +378,7 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, validateBody(
         collectedBy: finalPaymentStatus === 'paid' ? getActor(req) : null,
         note: note || '',
         movementDate,
-        createdBy: getActor(req)
+        createdBy: getActor(req), createdById: req.user?.userId || null
       }
     });
 
@@ -537,7 +537,7 @@ inventoryRouter.post('/inventory/movements/bulk', requireInventoryRole, async (r
           totalQuantity: totalQty,
           totalAmount: price * totalQty,
           note: note || null,
-          createdBy: getActor(req)
+          createdBy: getActor(req), createdById: req.user?.userId || null
         }
       });
 
@@ -556,7 +556,7 @@ inventoryRouter.post('/inventory/movements/bulk', requireInventoryRole, async (r
               paymentMethod: finalPaymentMethod || 'Tiền mặt',
               studentId: row.studentId,
               description: `Xuất bán ${item.name} (SL: ${row.quantity}) cho học viên ${student?.name || ''} theo lô ${batch.code}`,
-              createdBy: getActor(req)
+              createdBy: getActor(req), createdById: req.user?.userId || null
             }
           });
           revenueOtherId = rev.id;
@@ -583,7 +583,7 @@ inventoryRouter.post('/inventory/movements/bulk', requireInventoryRole, async (r
             collectedBy: finalPaymentStatus === 'paid' ? getActor(req) : null,
             note: note || `Xuất bán hàng loạt theo lớp ${cls.name}`,
             movementDate,
-            createdBy: getActor(req)
+            createdBy: getActor(req), createdById: req.user?.userId || null
           },
           include: {
             item: true,
@@ -657,7 +657,7 @@ inventoryRouter.post('/inventory/movements/:id/collect-payment', requireInventor
           paymentMethod,
           studentId: movement.relatedStudentId,
           description: note || `Thu tiền vật tư đã phát: ${movement.item.name} (SL: ${movement.quantity}) cho học viên ${movement.relatedStudent?.name || ''}`,
-          createdBy: getActor(req)
+          createdBy: getActor(req), createdById: req.user?.userId || null
         }
       });
 

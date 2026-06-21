@@ -88,7 +88,7 @@ admissionsRouter.post('/admission-leads', requireAdmissionRole, validateBody(cre
         testScheduleTime: data.testScheduleTime || null,
         testAssignee: data.testAssignee || null,
         testScheduleNote: data.testScheduleNote || null,
-        createdBy: req.user?.name || req.user?.username || 'unknown'
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
       }
     });
 
@@ -278,7 +278,7 @@ admissionsRouter.post('/admission-leads/:id/convert', requireAdmissionRole, asyn
         enrollDate: new Date().toISOString().slice(0, 10),
         admissionLeadId: lead.id,
         notes: `Convert từ hồ sơ tuyển sinh mã ${lead.leadCode || ''}`,
-        createdBy: req.user?.name || req.user?.username || 'unknown'
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
       }
     });
 
@@ -304,7 +304,7 @@ admissionsRouter.post('/admission-leads/:id/convert', requireAdmissionRole, asyn
           feePerSession: dbClass.defaultFeePerSession,
           startDate: new Date().toISOString().slice(0, 10),
           isActive: true,
-          createdBy: req.user?.name || req.user?.username || 'unknown',
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
           feeHistory: []
         }
       });

@@ -115,7 +115,7 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
           isSubstitute: isSubstitute || false,
           substituteForTeacherId: isSubstitute ? (originalTeacherId || cls.teacherId) : null,
           status: 'completed',
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
     } else {
@@ -194,7 +194,7 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
             feeApplied,
             note: r.note || null,
             source: r.source || 'manual',
-            createdBy: req.user?.name || req.user?.username || 'unknown'
+            createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
           }
         });
       }

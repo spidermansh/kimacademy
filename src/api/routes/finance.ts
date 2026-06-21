@@ -153,7 +153,7 @@ financeRouter.post('/transactions', requireFinanceRole, validateBody(createTrans
           isReconciled: false,
           isInvoiced: false,
           source: data.source || 'manual',
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
 
@@ -173,7 +173,7 @@ financeRouter.post('/transactions', requireFinanceRole, validateBody(createTrans
           studentId: data.studentId || null,
           description: data.notes || '',
           isReconciled: false,
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
     }
@@ -330,7 +330,7 @@ financeRouter.post('/expenses', requireFinanceRole, validateBody(createExpenseSc
         recurringNote: data.recurringNote || '',
         approvedBy: data.approvedBy || '',
         notes: data.notes || '',
-        createdBy: req.user?.name || req.user?.username || 'unknown'
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
       }
     });
 

@@ -80,7 +80,7 @@ enrollmentsRouter.post('/enrollments', requireAcademicRole, validateBody(createE
           feePerSession: Number(data.feePerSession),
           startDate: data.startDate || new Date().toISOString().slice(0, 10),
           isActive: data.isActive !== undefined ? data.isActive : true,
-          createdBy: req.user?.name || req.user?.username || 'unknown',
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
           feeHistory: []
         }
       });
@@ -178,7 +178,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
         feePerSession: Number(newFeePerSession),
         startDate: transferDate,
         isActive: true,
-        createdBy: req.user?.name || req.user?.username || 'unknown',
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
         feeHistory: [],
         transferNote: `Chuyển từ lớp ${oldClassName || 'Không lớp'}`
       }
@@ -208,7 +208,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
           paymentDate: transferDate,
           paymentMethod: PAYMENT_METHOD_BALANCE_TRANSFER,
           notes: `Chuyển số dư sang lớp ${newClassName}`,
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
 
@@ -220,7 +220,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
           paymentDate: transferDate,
           paymentMethod: PAYMENT_METHOD_BALANCE_TRANSFER,
           notes: `Nhận số dư chuyển từ lớp ${oldClassName}`,
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
 
@@ -285,7 +285,7 @@ enrollmentsRouter.post('/enrollments/add-class', requireAcademicRole, async (req
         feePerSession: Number(feePerSession),
         startDate,
         isActive: true,
-        createdBy: req.user?.name || req.user?.username || 'unknown',
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
         feeHistory: [],
         transferNote: 'Đăng ký thêm lớp học'
       }
