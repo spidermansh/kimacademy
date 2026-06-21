@@ -1,0 +1,597 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. User - Tài khoản người dùng
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  name      String
+  role      String
+  staffId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 2. StaffMember - Nhân sự (Giáo viên, Trợ giảng, Văn phòng...)
+model StaffMember {
+  id                          String             @id @default(uuid())
+  code                        String             @unique // Mã nhân sự duy nhất
+  name                        String
+  role                        String
+  phone                       String?
+  linkedUserId                String?
+  baseSalary                  Float              @default(0.0)
+  ratePerSession              Float              @default(0.0)
+  otherMonthlyAllowance       Float?             @default(0.0)
+  otherMonthlyAllowanceNote   String?
+  bankAccount                 String?
+  bankName                    String?
+  startDate                   String
+  status                      String             @default("active")
+  notes                       String?
+  taxMethod                   String             @default("fixed_percent")
+  taxMethodValue              Float              @default(10.0)
+  dependentsCount             Int                @default(0)
+  applySocialInsurance        Boolean            @default(false)
+  applyHealthInsurance        Boolean            @default(false)
+  applyUnemploymentInsurance  Boolean            @default(false)
+  insuranceBaseSalary         Float?
+  ratePerHour                 Float?             @default(0.0)
+  salaryHistory               String             @default("[]")
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+  sessions                    Session[]          @relation("TaughtSessions")
+  substituteSessions          Session[]          @relation("SubstituteSessions")
+  teachingLogs                TeachingLog[]
+  assistantWorkLogs           AssistantWorkLog[]
+  salaryAdvances              SalaryAdvance[]
+  payrollItems                PayrollItem[]
+  inventoryMovements          InventoryMovement[]
+}
+
+// 3. Class - Lớp học
+model Class {
+  id                   String             @id @default(uuid())
+  code                 String             @unique // Mã lớp học duy nhất
+  name                 String             @unique
+  type                 String             @default("offline")
+  teacherId            String             // Bắt buộc link GV chính
+  room                 String?
+  maxStudents          Int?
+  status               String             @default("active")
+  defaultFeePerSession Float              @default(0.0)
+  scheduleDays         String             @default("[]") // stored as JSON array string
+  scheduleTime         String?
+  description          String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  enrollments          Enrollment[]
+  sessions             Session[]
+  attendanceRecords    AttendanceRecord[]
+  nameHistory          ClassNameHistory[]
+}
+
+// 4. Student - Học viên
+model Student {
+  id                String              @id @default(uuid())
+  code              String              @unique // Mã học viên duy nhất
+  name              String
+  vietnameseName    String
+  englishName       String
+  gender            String?
+  birthDate         String?             // YYYY-MM-DD
+  status            String              @default("active") // active | waiting_class | suspended | left | trial
+  enrollDate        String?             // YYYY-MM-DD
+  notes             String?
+  admissionLeadId   String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  createdBy         String
+  updatedBy         String?
+  guardianContacts  GuardianContact[]
+  enrollments       Enrollment[]
+  attendanceRecords AttendanceRecord[]
+  transactions      TuitionTransaction[]
+  revenueOthers     RevenueOther[]
+  ledgerEntries     TuitionLedgerEntry[]
+  inventoryMovements InventoryMovement[]
+}
+
+// 5. GuardianContact - Liên hệ phụ huynh / người giám hộ
+model GuardianContact {
+  id           String   @id @default(uuid())
+  studentId    String
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  name         String?
+  phone        String
+  zalo         String?
+  email        String?
+  address      String?
+  relationship String?  @default("parent")
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+// 6. Enrollment - Đăng ký lớp của học viên
+model Enrollment {
+  id                String             @id @default(uuid())
+  studentId         String
+  student           Student            @relation(fields: [studentId], references: [id])
+  classId           String
+  class             Class              @relation(fields: [classId], references: [id])
+  feePerSession     Float
+  startDate         String             // YYYY-MM-DD
+  endDate           String?            // YYYY-MM-DD
+  isActive          Boolean            @default(true)
+  transferNote      String?
+  feeHistory        String             @default("[]") // stored as JSON array string
+  createdAt         DateTime           @default(now())
+  createdBy         String
+  attendanceRecords AttendanceRecord[]
+  ledgerEntries     TuitionLedgerEntry[]
+}
+
+// 7. Session - Buổi học thực tế
+model Session {
+  id                     String             @id @default(uuid())
+  classId                String
+  class                  Class              @relation(fields: [classId], references: [id])
+  date                   String             // YYYY-MM-DD
+  teacherId              String
+  teacher                StaffMember        @relation("TaughtSessions", fields: [teacherId], references: [id])
+  isSubstitute           Boolean            @default(false)
+  substituteForTeacherId String?
+  substituteForTeacher   StaffMember?       @relation("SubstituteSessions", fields: [substituteForTeacherId], references: [id])
+  status                 String             @default("completed") // scheduled | completed | cancelled
+  notes                  String?
+  createdAt              DateTime           @default(now())
+  createdBy              String
+  attendanceRecords      AttendanceRecord[]
+}
+
+// 8. AttendanceRecord - Nhật ký điểm danh
+model AttendanceRecord {
+  id               String      @id @default(uuid())
+  sessionId        String
+  session          Session     @relation(fields: [sessionId], references: [id])
+  studentId        String
+  student          Student     @relation(fields: [studentId], references: [id])
+  classId          String
+  class            Class       @relation(fields: [classId], references: [id])
+  enrollmentId     String
+  enrollment       Enrollment  @relation(fields: [enrollmentId], references: [id])
+  date             String      // YYYY-MM-DD
+  status           String      // present | absent | excused
+  sessionsDeducted Int         // 1 or 0
+  feeApplied       Float       // Phí thực tế snapshot
+  note             String?
+  source           String?     @default("manual") // manual | import
+  createdAt        DateTime    @default(now())
+  createdBy        String
+}
+
+// 9. TuitionTransaction - Giao dịch đóng học phí
+model TuitionTransaction {
+  id            String   @id @default(uuid())
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id])
+  enrollmentId  String?
+  amount        Float
+  paymentDate   String   // YYYY-MM-DD
+  paymentMethod String
+  term          String?  // Kỳ thu (e.g. "Tháng 6/2026")
+  notes         String?
+  isReconciled  Boolean  @default(false)
+  isInvoiced    Boolean  @default(false)
+  editHistory   String   @default("[]") // stored as JSON array string
+  source        String?  @default("manual") // manual | import
+  importBatchId String?
+  createdAt     DateTime @default(now())
+  createdBy     String
+}
+
+// 10. RevenueOther - Doanh thu khác (bán sách, đồng phục, lệ phí thi...)
+model RevenueOther {
+  id            String             @id @default(uuid())
+  category      String             // Sách | Đồng phục | Phí thi | Khác
+  amount        Float
+  paymentDate   String             // YYYY-MM-DD
+  paymentMethod String
+  studentId     String?
+  student       Student?           @relation(fields: [studentId], references: [id])
+  description   String?
+  isReconciled  Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  createdBy     String
+  inventoryMovements InventoryMovement[]
+}
+
+// 11. TuitionLedgerEntry - Sổ cái học phí riêng của từng Enrollment
+model TuitionLedgerEntry {
+  id                String     @id @default(uuid())
+  studentId         String
+  student           Student    @relation(fields: [studentId], references: [id])
+  enrollmentId      String     @unique
+  enrollment        Enrollment @relation(fields: [enrollmentId], references: [id])
+  totalPaid         Float      @default(0.0)
+  totalSpent        Float      @default(0.0)
+  balance           Float      @default(0.0)
+  sessionsRemaining Int        @default(0)
+  lastUpdatedAt     DateTime   @default(now())
+}
+
+// 12. AdmissionLead - Tuyển sinh / Học viên tiềm năng
+model AdmissionLead {
+  id                 String    @id @default(uuid())
+  leadCode           String?
+  studentName        String
+  dateOfBirth        String?
+  address            String?
+  parentName         String?
+  parentPhone        String
+  parentZalo         String?
+  source             String?
+  learningNeed       String?
+  consultationNote   String?
+  assignedCounselor  String?
+  registrationDate   String
+  status             String    @default("new")
+  testScheduleDate   String?
+  testScheduleTime   String?
+  testAssignee       String?
+  testScheduleNote   String?
+  testDate           String?
+  testType           String?
+  testScore          Float?
+  suggestedLevel     String?
+  testNote           String?
+  testResultNote     String?
+  rejectionReason    String?
+  convertedStudentId String?
+  assignedClassId    String?
+  convertedAt        String?
+  convertedBy        String?
+  createdAt          DateTime  @default(now())
+  createdBy          String?
+  updatedAt          DateTime  @updatedAt
+  updatedBy          String?
+}
+
+// 13. TeachingLog - Nhật ký đứng lớp của giáo viên
+model TeachingLog {
+  id                String       @id @default(uuid())
+  staffId           String
+  staff             StaffMember  @relation(fields: [staffId], references: [id])
+  date              String       // YYYY-MM-DD
+  classId           String
+  sessionId         String?
+  sessions          Int          @default(1)
+  isSubstitute      Boolean      @default(false)
+  originalTeacherId String?
+  hoursWorked       Float        @default(0.0)
+  source            String       @default("auto")
+  note              String?
+  createdAt         DateTime     @default(now())
+}
+
+// 14. AssistantWorkLog - Nhật ký chấm công trợ giảng
+model AssistantWorkLog {
+  id          String      @id @default(uuid())
+  staffId     String
+  staff       StaffMember @relation(fields: [staffId], references: [id])
+  date        String      // YYYY-MM-DD
+  hoursWorked Float
+  hourlyRate  Float
+  totalAmount Float
+  note        String?
+  createdAt   DateTime    @default(now())
+  createdBy   String
+}
+
+// 15. SalaryAdvance - Tạm ứng lương
+model SalaryAdvance {
+  id         String      @id @default(uuid())
+  staffId    String
+  staff      StaffMember @relation(fields: [staffId], references: [id])
+  amount     Float
+  date       String      // YYYY-MM-DD
+  reason     String?
+  approvedBy String?
+  createdAt  DateTime    @default(now())
+}
+
+// 16. PayrollPeriod - Kỳ tính lương tháng
+model PayrollPeriod {
+  id           String        @id @default(uuid())
+  month        String        // YYYY-MM
+  startDate    String        // YYYY-MM-DD
+  endDate      String        // YYYY-MM-DD
+  status       String        @default("draft") // draft | approved | paid
+  note         String?
+  createdAt    DateTime      @default(now())
+  createdBy    String
+  payrollItems PayrollItem[]
+}
+
+// 17. PayrollItem - Chi tiết lương từng nhân sự trong kỳ
+model PayrollItem {
+  id                         String        @id @default(uuid())
+  payrollPeriodId            String
+  payrollPeriod              PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  staffId                    String
+  staff                      StaffMember   @relation(fields: [staffId], references: [id])
+  role                       String
+  baseSalary                 Float         @default(0.0)
+  totalSessions              Int           @default(0)
+  ratePerSession             Float         @default(0.0)
+  teachingIncome             Float         @default(0.0)
+  totalHours                 Float         @default(0.0)
+  ratePerHour                Float         @default(0.0)
+  hourlyIncome               Float         @default(0.0)
+  otherIncome                Float         @default(0.0)
+  otherMonthlyAllowance      Float         @default(0.0)
+  otherMonthlyAllowanceNote  String?
+  kpiDeduction               Float         @default(0.0)
+  grossSalary                Float         @default(0.0)
+  socialInsuranceAmount      Float         @default(0.0)
+  healthInsuranceAmount      Float         @default(0.0)
+  unemploymentInsuranceAmount Float         @default(0.0)
+  taxRate                    Float         @default(0.0)
+  taxAmount                  Float         @default(0.0)
+  totalAdvance               Float         @default(0.0)
+  advanceApplied             Float         @default(0.0)
+  netSalary                  Float         @default(0.0)
+  status                     String        @default("draft")
+  notes                      String?
+  createdAt                  DateTime      @default(now())
+}
+
+// 18. Expense - Chi phí vận hành
+model Expense {
+  id                 String             @id @default(uuid())
+  date               String             // YYYY-MM-DD
+  category           String             // Tiền mặt | Chuyển khoản | ...
+  description        String
+  amount             Float
+  paymentMethod      String
+  isRecurring        Boolean            @default(false)
+  recurringNote      String?
+  approvedBy         String?
+  notes              String?
+  createdBy          String
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  inventoryMovements InventoryMovement[]
+}
+
+// 19. DailyClose - Chốt ca thu chi cuối ngày
+model DailyClose {
+  id          String   @id @default(uuid())
+  date        String   // YYYY-MM-DD
+  status      String   @default("completed") // completed
+  completedAt String
+  completedBy String
+  summary     String   // stored as JSON string
+  note        String?
+}
+
+// 20. AuditLog - Nhật ký thay đổi hệ thống
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  oldValue  String?  // Giá trị cũ (JSON string)
+  newValue  String?  // Giá trị mới (JSON string)
+  user      String
+  timestamp DateTime @default(now())
+}
+
+// 21. SystemParameter - Tham số hệ thống cấu hình
+model SystemParameter {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  name          String
+  group         String
+  valueType     String
+  value         String
+  unit          String?
+  description   String?
+  effectiveFrom String
+  effectiveTo   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  createdBy     String
+  updatedAt     DateTime? @updatedAt
+  updatedBy     String?
+}
+
+// 22. FeatureFlag - Cấu hình tính năng
+model FeatureFlag {
+  key             String   @id
+  enabled         Boolean  @default(false)
+  enabledForRoles String   @default("[]") // stored as JSON array string
+  description     String?
+}
+
+// 23. ImportBatch - Đợt import Excel
+model ImportBatch {
+  id           String   @id @default(uuid())
+  type         String   // student | class | attendance | transaction
+  status       String   // pending | success | failed
+  fileName     String
+  rowCount     Int      @default(0)
+  successCount Int      @default(0)
+  errorLog     String?  // stored as JSON string
+  createdAt    DateTime @default(now())
+  createdBy    String
+}
+
+// 24. BackupSnapshot - Phiên bản sao lưu dữ liệu
+model BackupSnapshot {
+  id        String   @id @default(uuid())
+  fileName  String   @unique
+  sizeBytes Int
+  status    String   // success | failed
+  createdAt DateTime @default(now())
+  createdBy String
+}
+
+// 25. Notification - Thông báo hệ thống
+model Notification {
+  id          String   @id @default(uuid())
+  type        String
+  title       String
+  message     String
+  icon        String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  link        String?
+  studentId   String?
+  priority    String   @default("medium")
+}
+
+// ==========================================
+// PHÂN HỆ VẬT TƯ / KHO (INVENTORY MODULE - 7 Entities)
+// ==========================================
+
+// 26. InventoryCategory - Danh mục vật tư (Sách, Đồng phục...)
+model InventoryCategory {
+  id          String          @id @default(uuid())
+  name        String          @unique
+  code        String?
+  description String?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  createdBy   String
+  updatedBy   String?
+  items       InventoryItem[]
+}
+
+// 27. InventoryItem - Mặt hàng vật tư
+model InventoryItem {
+  id               String             @id @default(uuid())
+  categoryId       String
+  category         InventoryCategory  @relation(fields: [categoryId], references: [id])
+  code             String             @unique // SKU
+  name             String
+  unit             String             // cuốn, cái, bộ...
+  itemType         String             // consumable | sellable | equipment
+  defaultSalePrice Float?             @default(0.0)
+  defaultCostPrice Float?             @default(0.0)
+  minStockLevel    Float?             @default(0.0)
+  description      String?
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  createdBy        String
+  updatedBy        String?
+  variants         InventoryVariant[]
+  stocks           InventoryStock[]
+  movements        InventoryMovement[]
+}
+
+// 28. InventoryVariant - Biến thể mặt hàng (Size M, L, Color...)
+model InventoryVariant {
+  id         String              @id @default(uuid())
+  itemId     String
+  item       InventoryItem       @relation(fields: [itemId], references: [id])
+  sku        String              @unique
+  name       String
+  attributes String              @default("{}") // stored as JSON string
+  barcode    String?
+  isActive   Boolean             @default(true)
+  createdAt  DateTime            @default(now())
+  stocks     InventoryStock[]
+  movements  InventoryMovement[]
+}
+
+// 29. InventoryLocation - Vị trí lưu kho
+model InventoryLocation {
+  id             String              @id @default(uuid())
+  name           String              @unique
+  description    String?
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  stocks         InventoryStock[]
+  movementsFrom  InventoryMovement[] @relation("LocationFrom")
+  movementsTo    InventoryMovement[] @relation("LocationTo")
+}
+
+// 30. InventoryStock - Số tồn hiện tại theo từng mặt hàng/biến thể/kho
+model InventoryStock {
+  id             String            @id @default(uuid())
+  itemId         String
+  item           InventoryItem     @relation(fields: [itemId], references: [id])
+  variantId      String?
+  variant        InventoryVariant? @relation(fields: [variantId], references: [id])
+  locationId     String
+  location       InventoryLocation @relation(fields: [locationId], references: [id])
+  quantityOnHand Float             @default(0.0)
+  averageCost    Float?            @default(0.0)
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([itemId, variantId, locationId])
+}
+
+// 31. InventoryMovement - Nhật ký chi tiết giao dịch kho (Ledger)
+model InventoryMovement {
+  id                    String             @id @default(uuid())
+  movementType          String             // opening | purchase_in | return_in | issue_to_student | issue_to_staff | internal_use | adjustment | damage | loss | transfer
+  itemId                String
+  item                  InventoryItem      @relation(fields: [itemId], references: [id])
+  variantId             String?
+  variant               InventoryVariant?  @relation(fields: [variantId], references: [id])
+  fromLocationId        String?
+  fromLocation          InventoryLocation? @relation("LocationFrom", fields: [fromLocationId], references: [id])
+  toLocationId          String?
+  toLocation            InventoryLocation? @relation("LocationTo", fields: [toLocationId], references: [id])
+  quantity              Float              // Số lượng chuyển giao
+  unitCost              Float?             @default(0.0)
+  unitSalePrice         Float?             @default(0.0)
+  totalAmount           Float?             @default(0.0)
+  relatedStudentId      String?
+  relatedStudent        Student?           @relation(fields: [relatedStudentId], references: [id])
+  relatedStaffId        String?
+  relatedStaff          StaffMember?       @relation(fields: [relatedStaffId], references: [id])
+  relatedRevenueOtherId String?
+  relatedRevenueOther   RevenueOther?      @relation(fields: [relatedRevenueOtherId], references: [id])
+  relatedExpenseId      String?
+  relatedExpense        Expense?           @relation(fields: [relatedExpenseId], references: [id])
+  note                  String?
+  movementDate          String             // YYYY-MM-DD
+  createdAt             DateTime           @default(now())
+  createdBy             String
+}
+
+// 32. Supplier - Nhà cung cấp
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  phone     String?
+  email     String?
+  address   String?
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// 33. ClassNameHistory - Lịch sử đổi tên lớp học
+model ClassNameHistory {
+  id        String   @id @default(uuid())
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  oldName   String
+  newName   String
+  changedAt DateTime @default(now())
+  reason    String?
+  changedBy String
+}

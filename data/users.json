@@ -19,5 +19,12 @@
     "password": "password123",
     "name": "Quản Trị Viên",
     "role": "admin"
+  },
+  {
+    "id": "4",
+    "username": "teacher",
+    "password": "password123",
+    "name": "John Smith",
+    "role": "teacher"
   }
 ]

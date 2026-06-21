@@ -1,25 +1,25 @@
 import { spawn } from 'child_process';
 
-console.log('🚀 Đang khởi động hệ thống quản lý thu tiền Kim Academy...');
-console.log('👉 Frontend (Vite) sẽ chạy ở: http://localhost:3000');
-console.log('👉 Backend (Express) sẽ chạy ở: http://localhost:3001');
+console.log('🚀 Đang khởi động hệ thống quản lý Kim Academy v3...');
+console.log('👉 Frontend (Vite) sẽ chạy ở: http://localhost:3025');
+console.log('👉 Backend (Express) sẽ chạy ở: http://localhost:3021');
 console.log('------------------------------------------------------------');
 
-// Start Vite Client
-const vite = spawn('npx', ['vite', '--port=3000', '--host=0.0.0.0'], {
+// Khởi chạy Vite Client
+const vite = spawn('npx', ['vite', '--port=3025', '--host=0.0.0.0'], {
   stdio: 'inherit',
   shell: true,
 });
 
-// Start Express Server
-const server = spawn('npx', ['tsx', 'server.ts'], {
+// Khởi chạy Express Server
+const server = spawn('npx', ['tsx', 'src/api/server.ts'], {
   stdio: 'inherit',
   shell: true,
 });
 
-// Clean up processes on exit
+// Dọn dẹp các tiến trình khi thoát
 const cleanUp = () => {
-  console.log('\n🛑 Đang dừng toàn bộ các tiến trình...');
+  console.log('\n🛑 Đang dừng toàn bộ các tiến trình v3...');
   vite.kill('SIGINT');
   server.kill('SIGINT');
   process.exit(0);

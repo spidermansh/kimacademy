@@ -1,253 +1,305 @@
 import React, { useState, useEffect } from 'react';
-import TransactionForm from './components/TransactionForm';
-import TransactionTable from './components/TransactionTable';
-import DailyReportModal from './components/DailyReportModal';
-import ReportsDashboard from './components/ReportsDashboard';
-import UserManagement from './components/UserManagement';
-import StudentRegisterModal from './components/StudentRegisterModal';
-import ClassManagement from './components/ClassManagement';
-import AttendanceManagement from './components/AttendanceManagement';
-import TuitionManagement from './components/TuitionManagement';
-import ParentReminder from './components/ParentReminder';
-import StudentManagement from './components/StudentManagement';
-import TeacherHome from './components/TeacherHome';
-import Settings from './components/Settings';
-import NotificationCenter from './components/NotificationCenter';
-import StaffManagement from './components/StaffManagement';
-import TeachingAttendance from './components/TeachingAttendance';
-import SalaryAdvanceManager from './components/SalaryAdvanceManager';
-import SalaryDashboard from './components/SalaryDashboard';
-import UserGuide from './components/UserGuide';
-import ExpenseManagement from './components/ExpenseManagement';
-import Login from './components/Login';
-import { Transaction, Expense, AppSettings } from './types';
-import { api, auth } from './utils';
-import { ToastProvider, useToast } from './components/Toast';
+import TransactionForm from './ui/components/TransactionForm';
+import TransactionTable from './ui/components/TransactionTable';
+import DailyReportModal from './ui/components/DailyReportModal';
+import ReportsDashboard from './ui/pages/ReportsDashboard';
+import UserManagement from './ui/components/UserManagement';
+import StudentRegisterModal from './ui/components/StudentRegisterModal';
+import ClassManagement from './ui/pages/ClassManagement';
+import AttendanceManagement from './ui/pages/AttendanceManagement';
+import TuitionManagement from './ui/pages/TuitionManagement';
+import ParentReminder from './ui/components/ParentReminder';
+import StudentManagement from './ui/pages/StudentManagement';
+import TeacherHome from './ui/components/TeacherHome';
+import Settings from './ui/pages/Settings';
+import StaffManagement from './ui/pages/StaffManagement';
+import TeachingAttendance from './ui/components/TeachingAttendance';
+import SalaryAdvanceManager from './ui/components/SalaryAdvanceManager';
+import SalaryDashboard from './ui/pages/SalaryDashboard';
+import UserGuide from './ui/components/UserGuide';
+import ExpenseManagement from './ui/components/ExpenseManagement';
+import Login from './ui/components/Login';
+import AdmissionManagement from './ui/pages/AdmissionManagement';
+import InventoryManagement from './ui/pages/InventoryManagement';
+import TodayWorkspace from './ui/pages/TodayWorkspace';
+import MainLayout from './ui/layouts/MainLayout';
+import { TabId } from './ui/layouts/Sidebar';
+import { ToastProvider, useToast } from './ui/components/Toast';
+import { populateStudentEnrollment } from './shared/business/enrollment-helpers';
+import { api, auth } from './shared/utils';
+import { Transaction, Expense, AppSettings, Student, Class, StaffMember, AttendanceRecord, TeachingLog, SalaryAdvance, MonthlySalary, DailyCloseRecord } from './shared/types';
 import {
-  Check, BarChart3, LogOut, Users, BookOpen, CalendarDays,
-  Wallet, DollarSign, Menu, X, ChevronLeft, ChevronRight, ChevronDown,
-  GraduationCap, Settings as SettingsIcon, PhoneCall,
-  Briefcase, ClipboardCheck, HandCoins, Calculator,
-  FolderOpen, HelpCircle, Receipt,
+  GraduationCap, Users, BookOpen, CalendarDays, Wallet,
+  DollarSign, Receipt, PhoneCall, Briefcase, ClipboardCheck,
+  HandCoins, Calculator, BarChart3, Clock, HelpCircle,
+  Settings as SettingsIcon, LayoutDashboard, UserPlus, Package,
+  TrendingUp
 } from 'lucide-react';
 
-type TabId = 'thu-tien' | 'chi-phi' | 'quan-ly-hoc-vien' | 'quan-ly-lop' | 'diem-danh' | 'hoc-phi' | 'nhac-ph' | 'quan-ly-user' | 'cai-dat' | 'gv-home' | 'staff-list' | 'cham-cong' | 'ung-luong' | 'bang-luong' | 'huong-dan' | 'bc-dashboard' | 'bc-hoc-vien' | 'bc-lop' | 'bc-tai-chinh' | 'bc-pnl' | 'bc-cong-no' | 'bc-hieu-suat-gv' | 'bc-tuyen-sinh' | 'bc-si-so' | 'bc-dt-lop' | 'bc-chuyen-can' | 'bc-cp-nhan-su';
-
-interface NavItem {
-  id: TabId;
-  label: string;
-  icon: React.ReactNode;
-  adminOnly?: boolean;
-  hiddenForTeacher?: boolean;
-  teacherOnly?: boolean;
-  color?: string;
-}
-
-interface NavModule {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  color: string;
-  items: NavItem[];
-  adminOnly?: boolean;
-  hiddenForTeacher?: boolean;
-}
-
-// Module-based navigation structure
-const NAV_MODULES: NavModule[] = [
-  {
-    id: 'danh-muc',
-    label: 'Danh mục',
-    icon: <FolderOpen className="w-4 h-4" />,
+const TAB_LOOKUP: Record<TabId, { label: string; icon: React.ReactNode; color: string; subtitle: string }> = {
+  'ban-lam-viec': {
+    label: 'Bàn làm việc',
+    icon: <LayoutDashboard className="w-5 h-5" />,
     color: 'indigo',
-    hiddenForTeacher: true,
-    items: [
-      { id: 'quan-ly-hoc-vien', label: 'Học viên',     icon: <Users className="w-5 h-5" />,    color: 'blue' },
-      { id: 'quan-ly-lop',      label: 'Lớp học',     icon: <BookOpen className="w-5 h-5" />, color: 'violet' },
-      { id: 'staff-list',       label: 'Nhân viên',    icon: <Briefcase className="w-5 h-5" />, color: 'orange' },
-    ],
+    subtitle: 'Tổng quan hoạt động và chốt sổ ngày'
   },
-  {
-    id: 'tai-chinh',
-    label: 'Tài chính',
-    icon: <Wallet className="w-4 h-4" />,
-    color: 'emerald',
-    hiddenForTeacher: true,
-    items: [
-      { id: 'thu-tien',   label: 'Thu tiền',    icon: <DollarSign className="w-5 h-5" />,   color: 'emerald' },
-      { id: 'chi-phi',    label: 'Chi phí',     icon: <Receipt className="w-5 h-5" />,      color: 'red' },
-      { id: 'hoc-phi',    label: 'Học phí',     icon: <Wallet className="w-5 h-5" />,       color: 'cyan' },
-      { id: 'nhac-ph',    label: 'Nhắc PH',     icon: <PhoneCall className="w-5 h-5" />,    color: 'pink' },
-    ],
+  'tuyen-sinh': {
+    label: 'Tuyển sinh',
+    icon: <UserPlus className="w-5 h-5" />,
+    color: 'pink',
+    subtitle: 'Quản lý phễu tuyển sinh & lịch hẹn test'
   },
-  {
-    id: 'hoc-vu',
-    label: 'Quản lý Học vụ',
-    icon: <GraduationCap className="w-4 h-4" />,
+  'quan-ly-hoc-vien': {
+    label: 'Quản lý Học viên',
+    icon: <Users className="w-5 h-5" />,
     color: 'blue',
-    items: [
-      { id: 'gv-home',    label: 'Trang GV',    icon: <GraduationCap className="w-5 h-5" />, color: 'teal', teacherOnly: true },
-      { id: 'diem-danh',  label: 'Điểm danh',   icon: <CalendarDays className="w-5 h-5" />, color: 'amber' },
-    ],
+    subtitle: 'Danh sách hồ sơ học viên chính thức'
   },
-  {
-    id: 'nhan-vien',
-    label: 'Quản lý Nhân viên',
-    icon: <Briefcase className="w-4 h-4" />,
+  'quan-ly-lop': {
+    label: 'Quản lý Lớp học',
+    icon: <BookOpen className="w-5 h-5" />,
+    color: 'violet',
+    subtitle: 'Quản lý lớp, thời khóa biểu và phân công giáo viên'
+  },
+  'diem-danh': {
+    label: 'Điểm danh',
+    icon: <CalendarDays className="w-5 h-5" />,
+    color: 'amber',
+    subtitle: 'Ghi nhận điểm danh và khấu trừ buổi học'
+  },
+  'thu-tien': {
+    label: 'Thu học phí',
+    icon: <DollarSign className="w-5 h-5" />,
+    color: 'emerald',
+    subtitle: 'Thu học phí, vật tư và lưu giao dịch'
+  },
+  'chi-phi': {
+    label: 'Chi phí vận hành',
+    icon: <Receipt className="w-5 h-5" />,
+    color: 'red',
+    subtitle: 'Quản lý chi phí cơ sở, vận hành trung tâm'
+  },
+  'hoc-phi': {
+    label: 'Sổ học phí',
+    icon: <Wallet className="w-5 h-5" />,
+    color: 'cyan',
+    subtitle: 'Theo dõi công nợ, hạn đóng và số buổi còn lại'
+  },
+  'nhac-ph': {
+    label: 'Nhắc phí phụ huynh',
+    icon: <PhoneCall className="w-5 h-5" />,
+    color: 'pink',
+    subtitle: 'Danh sách học viên sắp hết hạn cần nhắc phí'
+  },
+  'inventory': {
+    label: 'Quản lý kho vật tư',
+    icon: <Package className="w-5 h-5" />,
+    color: 'indigo',
+    subtitle: 'Quản lý vật tư, nhập/xuất kho và bán hàng học viên'
+  },
+  'staff-list': {
+    label: 'Hồ sơ nhân viên',
+    icon: <Briefcase className="w-5 h-5" />,
     color: 'orange',
-    hiddenForTeacher: true,
-    items: [
-      { id: 'cham-cong',  label: 'Chấm công GV', icon: <ClipboardCheck className="w-5 h-5" />, color: 'amber' },
-      { id: 'ung-luong',  label: 'Ứng lương',    icon: <HandCoins className="w-5 h-5" />,      color: 'yellow' },
-      { id: 'bang-luong', label: 'Bảng lương',   icon: <Calculator className="w-5 h-5" />,     color: 'lime' },
-    ],
+    subtitle: 'Thông tin nhân viên, hợp đồng và cấu hình lương'
   },
-  {
-    id: 'bao-cao-thong-ke',
-    label: 'Báo cáo Thống kê',
-    icon: <BarChart3 className="w-4 h-4" />,
+  'cham-cong': {
+    label: 'Chấm công giảng dạy',
+    icon: <ClipboardCheck className="w-5 h-5" />,
+    color: 'amber',
+    subtitle: 'Xác nhận chấm công đứng lớp của giáo viên'
+  },
+  'ung-luong': {
+    label: 'Tạm ứng lương',
+    icon: <HandCoins className="w-5 h-5" />,
+    color: 'yellow',
+    subtitle: 'Phê duyệt và ghi nhận tạm ứng của nhân viên'
+  },
+  'bang-luong': {
+    label: 'Bảng lương tháng',
+    icon: <Calculator className="w-5 h-5" />,
+    color: 'lime',
+    subtitle: 'Tính lương tự động, xuất phiếu lương'
+  },
+  'bc-dashboard': {
+    label: 'Báo cáo trung tâm',
+    icon: <BarChart3 className="w-5 h-5" />,
     color: 'rose',
-    adminOnly: true,
-    items: [
-      { id: 'bc-dashboard',   label: 'Tổng quan',      icon: <BarChart3 className="w-5 h-5" />,      color: 'rose' },
-      { id: 'bc-hoc-vien',    label: 'Theo Học viên', icon: <Users className="w-5 h-5" />,          color: 'blue' },
-      { id: 'bc-lop',         label: 'Theo Lớp',       icon: <BookOpen className="w-5 h-5" />,       color: 'violet' },
-      { id: 'bc-tai-chinh',   label: 'Tài chính',      icon: <Wallet className="w-5 h-5" />,         color: 'emerald' },
-      { id: 'bc-pnl',         label: 'Lợi nhuận',     icon: <BarChart3 className="w-5 h-5" />,      color: 'emerald' },
-      { id: 'bc-cong-no',     label: 'Công nợ',       icon: <DollarSign className="w-5 h-5" />,     color: 'amber' },
-      { id: 'bc-hieu-suat-gv',label: 'Hiệu suất GV', icon: <GraduationCap className="w-5 h-5" />,  color: 'blue' },
-      { id: 'bc-tuyen-sinh',  label: 'Tuyển sinh',    icon: <Users className="w-5 h-5" />,          color: 'cyan' },
-      { id: 'bc-si-so',       label: 'Sĩ số lớp',     icon: <BookOpen className="w-5 h-5" />,       color: 'violet' },
-      { id: 'bc-dt-lop',      label: 'DT theo lớp',   icon: <DollarSign className="w-5 h-5" />,     color: 'emerald' },
-      { id: 'bc-chuyen-can',  label: 'Chuyên cần',    icon: <CalendarDays className="w-5 h-5" />,   color: 'amber' },
-      { id: 'bc-cp-nhan-su',  label: 'CP Nhân sự',   icon: <Briefcase className="w-5 h-5" />,      color: 'orange' },
-    ],
+    subtitle: 'Dashboard thống kê hoạt động tổng thể'
   },
-];
-
-// System items (flat, admin only)
-const SYSTEM_ITEMS: NavItem[] = [
-  { id: 'huong-dan',   label: 'Hướng dẫn',   icon: <HelpCircle className="w-5 h-5" />, color: 'cyan' },
-  { id: 'quan-ly-user', label: 'Người dùng', icon: <Users className="w-5 h-5" />,        color: 'slate', adminOnly: true },
-  { id: 'cai-dat',      label: 'Cài đặt',    icon: <SettingsIcon className="w-5 h-5" />, color: 'indigo', adminOnly: true },
-];
-
-// Flat list for lookup
-const ALL_NAV_ITEMS: NavItem[] = [
-  ...NAV_MODULES.flatMap(m => m.items),
-  ...SYSTEM_ITEMS,
-];
-
-// Color map cho active state
-const ACTIVE_COLORS: Record<string, string> = {
-  emerald: 'bg-emerald-500/20 text-emerald-300 border-l-2 border-emerald-400',
-  red:     'bg-red-500/20 text-red-300 border-l-2 border-red-400',
-  blue:    'bg-blue-500/20 text-blue-300 border-l-2 border-blue-400',
-  violet:  'bg-violet-500/20 text-violet-300 border-l-2 border-violet-400',
-  amber:   'bg-amber-500/20 text-amber-300 border-l-2 border-amber-400',
-  cyan:    'bg-cyan-500/20 text-cyan-300 border-l-2 border-cyan-400',
-  rose:    'bg-rose-500/20 text-rose-300 border-l-2 border-rose-400',
-  slate:   'bg-slate-500/20 text-slate-300 border-l-2 border-slate-400',
-  indigo:  'bg-indigo-500/20 text-indigo-300 border-l-2 border-indigo-400',
-  teal:    'bg-teal-500/20 text-teal-300 border-l-2 border-teal-400',
-  pink:    'bg-pink-500/20 text-pink-300 border-l-2 border-pink-400',
-  orange:  'bg-orange-500/20 text-orange-300 border-l-2 border-orange-400',
-  yellow:  'bg-yellow-500/20 text-yellow-300 border-l-2 border-yellow-400',
-  lime:    'bg-lime-500/20 text-lime-300 border-l-2 border-lime-400',
+  'bc-student': {
+    label: 'Báo cáo học viên',
+    icon: <Users className="w-5 h-5" />,
+    color: 'blue',
+    subtitle: 'Phân tích số liệu học viên'
+  },
+  'bc-class': {
+    label: 'Báo cáo lớp học',
+    icon: <BookOpen className="w-5 h-5" />,
+    color: 'violet',
+    subtitle: 'Thống kê sĩ số lớp học & điểm danh'
+  },
+  'bc-tuition': {
+    label: 'Báo cáo học phí',
+    icon: <Wallet className="w-5 h-5" />,
+    color: 'cyan',
+    subtitle: 'Thống kê đóng phí & tổng hợp công nợ'
+  },
+  'bc-finance': {
+    label: 'Báo cáo tài chính',
+    icon: <TrendingUp className="w-5 h-5" />,
+    color: 'emerald',
+    subtitle: 'Báo cáo thu chi, quỹ tiền và kết quả kinh doanh P&L'
+  },
+  'bc-staff': {
+    label: 'Báo cáo nhân sự',
+    icon: <Briefcase className="w-5 h-5" />,
+    color: 'orange',
+    subtitle: 'Hiệu suất đứng lớp & chi phí lương nhân viên'
+  },
+  'bc-audit': {
+    label: 'Báo cáo đối soát',
+    icon: <Clock className="w-5 h-5" />,
+    color: 'slate',
+    subtitle: 'Nhật ký chốt ngày & lịch sử thao tác hệ thống'
+  },
+  'bc-leads': {
+    label: 'Báo cáo tuyển sinh',
+    icon: <PhoneCall className="w-5 h-5" />,
+    color: 'pink',
+    subtitle: 'Tỷ lệ chuyển đổi phễu khách hàng'
+  },
+  'huong-dan': {
+    label: 'Hướng dẫn sử dụng',
+    icon: <HelpCircle className="w-5 h-5" />,
+    color: 'cyan',
+    subtitle: 'Tài liệu hướng dẫn vận hành hệ thống'
+  },
+  'quan-ly-user': {
+    label: 'Quản lý người dùng',
+    icon: <Users className="w-5 h-5" />,
+    color: 'slate',
+    subtitle: 'Cấp quyền và quản lý tài khoản truy cập'
+  },
+  'cai-dat': {
+    label: 'Cài đặt hệ thống',
+    icon: <SettingsIcon className="w-5 h-5" />,
+    color: 'indigo',
+    subtitle: 'Thiết lập các tham số hệ thống chung'
+  },
+  'gv-home': {
+    label: 'Cổng thông tin Giáo viên',
+    icon: <GraduationCap className="w-5 h-5" />,
+    color: 'teal',
+    subtitle: 'Bàn làm việc giảng dạy cá nhân'
+  }
 };
 
-const ICON_COLORS: Record<string, string> = {
-  emerald: 'text-emerald-400',
-  red:     'text-red-400',
-  blue:    'text-blue-400',
-  violet:  'text-violet-400',
-  amber:   'text-amber-400',
-  cyan:    'text-cyan-400',
-  rose:    'text-rose-400',
-  slate:   'text-slate-400',
-  indigo:  'text-indigo-400',
-  teal:    'text-teal-400',
-  pink:    'text-pink-400',
-  orange:  'text-orange-400',
-  yellow:  'text-yellow-400',
-  lime:    'text-lime-400',
+const getGroupIdFromTab = (tab: TabId): string => {
+  switch (tab) {
+    case 'bc-student': return 'grp_students';
+    case 'bc-class': return 'grp_classes';
+    case 'bc-tuition': return 'grp_tuition';
+    case 'bc-finance': return 'grp_finance';
+    case 'bc-staff': return 'grp_staff';
+    case 'bc-audit': return 'grp_reconciliation';
+    case 'bc-leads': return 'grp_admission';
+    default: return 'grp_overview';
+  }
 };
 
 function AppInner() {
   const toast = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [staff, setStaff] = useState<any[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [teachingLogs, setTeachingLogs] = useState<TeachingLog[]>([]);
+  const [advances, setAdvances] = useState<SalaryAdvance[]>([]);
+  const [salaries, setSalaries] = useState<MonthlySalary[]>([]);
+  const [dailyCloses, setDailyCloses] = useState<DailyCloseRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [systemParameters, setSystemParameters] = useState<any[]>([]);
+  const [admissionLeads, setAdmissionLeads] = useState<any[]>([]);
+
   const [pendingTransaction, setPendingTransaction] = useState<any | null>(null);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>('thu-tien');
+  const [activeTab, setActiveTab] = useState<TabId>('ban-lam-viec');
 
-  // Sidebar state
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('kim_sidebar_modules');
-      return saved ? JSON.parse(saved) : { 'hoc-vien': true, 'nhan-vien': true };
-    } catch { return { 'hoc-vien': true, 'nhan-vien': true }; }
-  });
-
-  const toggleModule = (moduleId: string) => {
-    setExpandedModules(prev => {
-      const next = { ...prev, [moduleId]: !prev[moduleId] };
-      localStorage.setItem('kim_sidebar_modules', JSON.stringify(next));
-      return next;
-    });
-  };
-
-  // Auth state
   const [user, setUser] = useState<{ username: string; name: string; role: string } | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isDataLoading, setIsDataLoading] = useState(false);
 
-  // Initialize Auth
-  useEffect(() => {
-    const savedToken = auth.getToken();
-    const savedUser = auth.getUser();
-    if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(savedUser);
-    }
-    setIsAuthLoading(false);
-  }, []);
-
-  // Fetch all data on Login
-  useEffect(() => {
-    if (token) {
-      setIsDataLoading(true);
-      Promise.all([
+  const refreshAllData = async () => {
+    if (!token) return;
+    setIsDataLoading(true);
+    try {
+      const [
+        txData, studentData, classData, settingsData, staffData, expenseData,
+        attendanceData, enrollmentData, teachingLogData, advanceData, salaryData,
+        dailyCloseData, auditLogData, systemParametersData, admissionLeadsData
+      ] = await Promise.all([
         api.getTransactions(),
         api.getStudents(),
         api.getClasses(),
         api.getSettings(),
         api.getStaff(),
         api.getExpenses(),
-      ])
-        .then(([txData, studentData, classData, settingsData, staffData, expenseData]) => {
-          setTransactions(txData);
-          setStudents(studentData);
-          setClasses(classData);
-          setSettings(settingsData);
-          setStaff(staffData);
-          setExpenses(expenseData);
-        })
-        .catch(err => {
-          console.error('Lỗi khi tải dữ liệu:', err);
-          handleLogout();
-        })
-        .finally(() => {
-          setIsDataLoading(false);
-        });
+        api.getAttendance(),
+        api.getEnrollments(),
+        api.getTeachingLogs(),
+        api.getSalaryAdvances(),
+        api.getMonthlySalaries(),
+        api.getDailyCloses(),
+        api.getAuditLogs(),
+        api.getSystemParameters(),
+        api.getAdmissionLeads().catch(() => [])
+      ]);
+      setTransactions(txData);
+      setClasses(classData);
+      setSettings(settingsData);
+      setStaff(staffData);
+      setExpenses(expenseData);
+      setAttendance(attendanceData);
+      setEnrollments(enrollmentData);
+      
+      const populated = studentData.map((s: any) => populateStudentEnrollment(s, enrollmentData));
+      setStudents(populated);
+      setTeachingLogs(teachingLogData);
+      setAdvances(advanceData);
+      setSalaries(salaryData);
+      setDailyCloses(dailyCloseData || []);
+      setAuditLogs(auditLogData || []);
+      setSystemParameters(systemParametersData || []);
+      setAdmissionLeads(admissionLeadsData || []);
+    } catch (err) {
+      console.error('Lỗi khi làm mới dữ liệu:', err);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const savedToken = auth.getToken();
+    const savedUser = auth.getUser();
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setUser(savedUser);
+      setActiveTab((savedUser.role === 'teacher' || savedUser.role === 'teaching_assistant') ? 'gv-home' : 'ban-lam-viec');
+    }
+    setIsAuthLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (token) {
+      refreshAllData();
     }
   }, [token]);
 
@@ -256,7 +308,7 @@ function AppInner() {
     auth.setUser(newUser);
     setToken(newToken);
     setUser(newUser);
-    setActiveTab(newUser.role === 'teacher' ? 'gv-home' : 'thu-tien');
+    setActiveTab((newUser.role === 'teacher' || newUser.role === 'teaching_assistant') ? 'gv-home' : 'ban-lam-viec');
   };
 
   const handleLogout = async () => {
@@ -278,6 +330,15 @@ function AppInner() {
     setClasses([]);
     setSettings(null);
     setStaff([]);
+    setExpenses([]);
+    setAttendance([]);
+    setEnrollments([]);
+    setTeachingLogs([]);
+    setAdvances([]);
+    setSalaries([]);
+    setDailyCloses([]);
+    setSystemParameters([]);
+    setAdmissionLeads([]);
   };
 
   const submitTransaction = async (data: any) => {
@@ -285,11 +346,10 @@ function AppInner() {
       const newTransaction = await api.createTransaction(data);
       setTransactions(prev => [newTransaction, ...prev]);
       const studentData = await api.getStudents();
-      setStudents(studentData);
+      setStudents(studentData.map((s: any) => populateStudentEnrollment(s, enrollments)));
 
-      // Show informative toast for tuition payments
-      if (data.revenueCategory === 'Học phí offline' || data.revenueCategory === 'Học phí online') {
-        const student = studentData.find((s: any) => s.id === data.studentId || s.name?.toLowerCase() === data.studentName?.toLowerCase());
+      if (data.revenueCategory === 'Học phí offline') {
+        const student = studentData.find((s: any) => s.id === data.studentId);
         const fee = Number(student?.feePerSession) || 0;
         if (fee > 0) {
           const sessionsBought = Math.floor(data.amount / fee);
@@ -309,8 +369,7 @@ function AppInner() {
   };
 
   const handleAddTransaction = async (data: Omit<Transaction, 'id' | 'createdAt' | 'isReconciled' | 'isInvoiced'>) => {
-    const normalizedName = data.studentName.trim().toLowerCase();
-    const exists = students.some(s => s.name.toLowerCase() === normalizedName);
+    const exists = data.studentId ? students.some(s => s.id === data.studentId) : false;
 
     if (!exists) {
       toast.error(
@@ -320,10 +379,9 @@ function AppInner() {
       return;
     }
 
-    // Check trùng transaction: cùng HV + cùng ngày + cùng số tiền + cùng loại
     const duplicate = transactions.find(t =>
       t.paymentDate === (data as any).paymentDate &&
-      t.studentName?.toLowerCase() === normalizedName &&
+      t.studentId === data.studentId &&
       t.amount === (data as any).amount &&
       t.revenueCategory === (data as any).revenueCategory
     );
@@ -415,10 +473,9 @@ function AppInner() {
       const updated = await api.updateTransaction(id, updates);
       setTransactions(prev => prev.map(t => t.id === id ? updated : t));
       
-      // Nếu thay đổi studentName hoặc className, cần tải lại danh sách học viên để đảm bảo tính toán đồng bộ
       if (updates.studentName || updates.className) {
         const studentData = await api.getStudents();
-        setStudents(studentData);
+        setStudents(studentData.map((s: any) => populateStudentEnrollment(s, enrollments)));
       }
       toast.success('Đã cập nhật giao dịch!');
       return updated;
@@ -428,23 +485,17 @@ function AppInner() {
     }
   };
 
-
-  // ── Tab label for page title ────────────────────────────────────────────────
-  const activeNavItem = ALL_NAV_ITEMS.find(n => n.id === activeTab);
-
-  // ── Tab navigation handler (also closes mobile sidebar) ────────────────────
   const handleTabChange = (id: TabId) => {
     setActiveTab(id);
-    setMobileSidebarOpen(false);
   };
 
   if (isAuthLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-sans">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm tracking-wider uppercase text-slate-400">Đang khởi tạo hệ thống...</p>
-        </div>
+         <div className="flex flex-col items-center gap-4">
+           <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+           <p className="text-sm tracking-wider uppercase text-slate-400">Đang khởi tạo hệ thống...</p>
+         </div>
       </div>
     );
   }
@@ -453,428 +504,185 @@ function AppInner() {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const isTeacher = user.role === 'teacher';
+  const activeNavItem = TAB_LOOKUP[activeTab] || {
+    label: 'Kim Academy',
+    icon: <GraduationCap className="w-5 h-5" />,
+    color: 'indigo',
+    subtitle: 'Hệ thống Quản lý Trung tâm'
+  };
+
+  const isTeacher = user.role === 'teacher' || user.role === 'teaching_assistant';
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans flex overflow-hidden" style={{ height: '100dvh' }}>
-
-      {/* ── Mobile overlay ─────────────────────────────────────────────────── */}
-      {mobileSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
-          onClick={() => setMobileSidebarOpen(false)}
+    <MainLayout
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      settings={settings}
+      currentUser={user}
+      students={students}
+      classes={classes}
+      transactions={transactions}
+      activeIcon={activeNavItem.icon}
+      activeColor={activeNavItem.color}
+      activeTitle={activeTab.startsWith('bc-') ? 'Báo cáo Thống kê' : activeNavItem.label}
+      activeSubtitle={activeTab.startsWith('bc-') ? `Báo cáo Thống kê / ${activeNavItem.label}` : activeNavItem.subtitle}
+      onLogout={handleLogout}
+    >
+      {isDataLoading ? (
+        <div className="space-y-4 animate-pulse">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="h-24 bg-slate-200 rounded-2xl" />
+            <div className="h-24 bg-slate-200 rounded-2xl" />
+            <div className="h-24 bg-slate-200 rounded-2xl" />
+          </div>
+          <div className="h-64 bg-slate-200 rounded-2xl" />
+          <div className="h-48 bg-slate-200 rounded-2xl" />
+        </div>
+      ) : activeTab === 'ban-lam-viec' ? (
+        <TodayWorkspace
+          students={students}
+          classes={classes}
+          transactions={transactions}
+          expenses={expenses}
+          staff={staff}
+          attendance={attendance}
+          enrollments={enrollments}
+          teachingLogs={teachingLogs}
+          advances={advances}
+          salaries={salaries}
+          settings={settings}
+          currentUser={user}
+          onNavigate={(tab) => handleTabChange(tab as TabId)}
+          onAddStudentClick={() => handleTabChange('quan-ly-hoc-vien')}
+          refreshAllData={refreshAllData}
+          dailyCloses={dailyCloses}
+          systemParameters={systemParameters}
+          admissionLeads={admissionLeads}
         />
-      )}
-
-      {/* ══ SIDEBAR ════════════════════════════════════════════════════════════ */}
-      <aside
-        className={`
-          fixed md:relative z-50 md:z-auto
-          flex flex-col h-full
-          bg-gradient-to-b from-slate-900 to-slate-950
-          border-r border-slate-700/50
-          transition-all duration-300 ease-in-out
-          ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-          ${sidebarCollapsed ? 'md:w-[68px]' : 'md:w-[220px]'}
-          w-[220px]
-          shadow-2xl
-        `}
-      >
-        {/* Logo */}
-        <div className={`flex items-center gap-3 px-4 py-5 border-b border-slate-700/50 shrink-0 ${sidebarCollapsed ? 'md:justify-center md:px-2' : ''}`}>
-          {settings?.logoUrl ? (
-            <img
-              src={settings.logoUrl}
-              alt="Logo"
-              className="w-9 h-9 rounded-xl object-contain bg-white/10 shrink-0"
-            />
-          ) : (
-            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-indigo-900/50">
-              <GraduationCap className="w-5 h-5 text-white" />
-            </div>
-          )}
-          <div className={`overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'md:w-0 md:opacity-0' : 'w-auto opacity-100'}`}>
-            <p className="text-white font-bold text-sm leading-tight whitespace-nowrap">
-              {settings?.centerName || 'Kim Academy'}
-            </p>
-            <p className="text-slate-400 text-[10px] whitespace-nowrap">Quản lý Trung tâm</p>
-          </div>
-        </div>
-
-        {/* Nav items — Module Groups */}
-        <nav className="flex-1 py-3 space-y-1 px-2 overflow-y-auto overflow-x-hidden">
-          {NAV_MODULES.map(mod => {
-            // Module visibility
-            if (mod.adminOnly && user.role !== 'admin') return null;
-            if (mod.hiddenForTeacher && isTeacher) return null;
-
-            const visibleItems = mod.items.filter(item => {
-              if (item.adminOnly && user.role !== 'admin') return false;
-              if (item.hiddenForTeacher && isTeacher) return false;
-              if (item.teacherOnly && !isTeacher) return false;
-              return true;
-            });
-            if (visibleItems.length === 0) return null;
-
-            const isExpanded = expandedModules[mod.id] !== false;
-            const hasActiveChild = visibleItems.some(item => activeTab === item.id);
-
-            return (
-              <div key={mod.id} className="mb-1">
-                {/* Module header */}
-                {!sidebarCollapsed ? (
-                  <button
-                    onClick={() => toggleModule(mod.id)}
-                    className={`
-                      w-full flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider
-                      transition-colors duration-150
-                      ${hasActiveChild ? `text-${mod.color}-400` : 'text-slate-500 hover:text-slate-300'}
-                    `}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className={hasActiveChild ? `text-${mod.color}-400` : 'text-slate-600'}>{mod.icon}</span>
-                      {mod.label}
-                    </span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}`} />
-                  </button>
-                ) : (
-                  <div className="w-full flex justify-center py-1.5">
-                    <div className={`w-6 h-0.5 rounded-full ${hasActiveChild ? `bg-${mod.color}-400` : 'bg-slate-700'}`} />
-                  </div>
-                )}
-
-                {/* Module items */}
-                {(isExpanded || sidebarCollapsed) && (
-                  <div className={`space-y-0.5 ${sidebarCollapsed ? '' : 'ml-1'}`}>
-                    {visibleItems.map(item => {
-                      const isActive = activeTab === item.id;
-                      const color = item.color || 'slate';
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => handleTabChange(item.id)}
-                          title={sidebarCollapsed ? item.label : undefined}
-                          className={`
-                            w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium
-                            transition-all duration-150 group relative
-                            ${isActive
-                              ? ACTIVE_COLORS[color]
-                              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
-                            }
-                            ${sidebarCollapsed ? 'md:justify-center md:px-2' : ''}
-                          `}
-                        >
-                          <span className={`shrink-0 transition-colors ${isActive ? '' : ICON_COLORS[color]}`}>
-                            {item.icon}
-                          </span>
-                          <span className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${sidebarCollapsed ? 'md:w-0 md:opacity-0' : 'w-auto opacity-100'}`}>
-                            {item.label}
-                          </span>
-                          {sidebarCollapsed && (
-                            <span className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-xl border border-slate-700">
-                              {item.label}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {/* System section — admin only */}
-          {user.role === 'admin' && (
-            <>
-              {!sidebarCollapsed && (
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 pb-1.5 pt-3">
-                  Hệ thống
-                </p>
-              )}
-              {SYSTEM_ITEMS.filter(item => {
-                if (item.adminOnly && user.role !== 'admin') return false;
-                return true;
-              }).map(item => {
-                const isActive = activeTab === item.id;
-                const color = item.color || 'slate';
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleTabChange(item.id)}
-                    title={sidebarCollapsed ? item.label : undefined}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-                      transition-all duration-150 group relative
-                      ${isActive
-                        ? ACTIVE_COLORS[color]
-                        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
-                      }
-                      ${sidebarCollapsed ? 'md:justify-center md:px-2' : ''}
-                    `}
-                  >
-                    <span className={`shrink-0 transition-colors ${isActive ? '' : ICON_COLORS[color]}`}>
-                      {item.icon}
-                    </span>
-                    <span className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${sidebarCollapsed ? 'md:w-0 md:opacity-0' : 'w-auto opacity-100'}`}>
-                      {item.label}
-                    </span>
-                    {sidebarCollapsed && (
-                      <span className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-xl border border-slate-700">
-                        {item.label}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </>
-          )}
-        </nav>
-
-        {/* User info + controls */}
-        <div className="border-t border-slate-700/50 p-3 space-y-2 shrink-0">
-          {/* User card */}
-          <div className={`flex items-center gap-2.5 px-1 ${sidebarCollapsed ? 'md:justify-center' : ''}`}>
-            <div className="w-8 h-8 bg-indigo-600/30 border border-indigo-500/40 rounded-full flex items-center justify-center shrink-0">
-              <span className="text-indigo-300 text-xs font-bold">
-                {user.name.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            <div className={`flex-1 min-w-0 overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'md:w-0 md:opacity-0' : 'opacity-100'}`}>
-              <p className="text-white text-xs font-semibold truncate">{user.name}</p>
-              <p className="text-slate-400 text-[10px] truncate">
-                {user.role === 'admin' ? '👑 Quản trị viên' : user.role === 'teacher' ? '👩‍🏫 Giáo viên' : '👤 Nhân viên'}
-              </p>
-            </div>
-          </div>
-
-          {/* Logout + Collapse buttons */}
-          <div className={`flex gap-1.5 ${sidebarCollapsed ? 'md:flex-col' : ''}`}>
-            <button
-              onClick={handleLogout}
-              title="Đăng xuất"
-              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
-            >
-              <LogOut className="w-3.5 h-3.5 shrink-0" />
-              <span className={`overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'md:hidden' : ''}`}>Đăng xuất</span>
-            </button>
-
-            {/* Collapse toggle — desktop only */}
-            <button
-              onClick={() => setSidebarCollapsed(v => !v)}
-              title={sidebarCollapsed ? 'Mở rộng' : 'Thu gọn'}
-              className="hidden md:flex items-center justify-center w-8 h-8 text-slate-500 hover:text-slate-300 hover:bg-slate-800 rounded-lg transition-colors shrink-0"
-            >
-              {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            </button>
-          </div>
-
-          {/* Version & Credit */}
-          {!sidebarCollapsed && (
-            <div className="px-3 pb-2 pt-1">
-              <p className="text-[9px] text-slate-600 text-center leading-relaxed">
-                Phát triển bởi: <span className="text-slate-400">Bùi Trần Sơn Hải</span> & <span className="text-slate-400">Antigravity</span>
-              </p>
-              <p className="text-[9px] text-slate-600 text-center">Ver: 1.1</p>
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* ══ MAIN AREA ══════════════════════════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-
-        {/* Top bar */}
-        <header className="h-14 bg-white border-b border-slate-200 flex items-center gap-3 px-4 sm:px-6 shadow-sm shrink-0">
-          {/* Mobile hamburger */}
-          <button
-            onClick={() => setMobileSidebarOpen(v => !v)}
-            className="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
-          >
-            {mobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-
-          {/* Page title */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className={`text-slate-400 ${ICON_COLORS[activeNavItem?.color || 'slate']}`}>
-              {activeNavItem?.icon}
-            </span>
-            <div>
-              <h1 className="text-base font-bold text-slate-800 leading-tight">{activeNavItem?.label}</h1>
-              <p className="text-[10px] text-slate-400 hidden sm:block">
-                {settings?.centerName || 'Kim Academy'} · Hệ thống Quản lý
-              </p>
-            </div>
-          </div>
-
-          {/* Notification bell + stats chips */}
-          <div className="hidden lg:flex items-center gap-2 ml-auto">
-            <span className="text-[11px] bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-medium">
-              {students.filter(s => s.className).length} học viên
-            </span>
-            <span className="text-[11px] bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-medium">
-              {classes.length} lớp
-            </span>
-            <span className="text-[11px] bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
-              {transactions.filter(t => {
-                const m = new Date().toISOString().slice(0, 7);
-                return t.paymentDate.startsWith(m);
-              }).length} giao dịch tháng này
-            </span>
-            <NotificationCenter onNavigate={(tab) => handleTabChange(tab as TabId)} />
-          </div>
-
-          {/* Mobile: bell + user avatar */}
-          <div className="ml-auto md:hidden flex items-center gap-2">
-            <NotificationCenter onNavigate={(tab) => handleTabChange(tab as TabId)} />
-            <div className="w-7 h-7 bg-indigo-100 rounded-full flex items-center justify-center">
-              <span className="text-indigo-700 text-xs font-bold">{user.name.charAt(0)}</span>
-            </div>
-          </div>
-
-          {/* Tablet: just bell icon */}
-          <div className="hidden md:flex lg:hidden items-center gap-2 ml-auto">
-            <NotificationCenter onNavigate={(tab) => handleTabChange(tab as TabId)} />
-          </div>
-        </header>
-
-        {/* Content */}
-        <main className="flex-1 overflow-auto p-4 sm:p-6">
-          {isDataLoading ? (
-            /* Loading skeleton */
-            <div className="space-y-4 animate-pulse">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="h-24 bg-slate-200 rounded-2xl" />
-                <div className="h-24 bg-slate-200 rounded-2xl" />
-                <div className="h-24 bg-slate-200 rounded-2xl" />
-              </div>
-              <div className="h-64 bg-slate-200 rounded-2xl" />
-              <div className="h-48 bg-slate-200 rounded-2xl" />
-            </div>
-
-          ) : activeTab === 'thu-tien' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] xl:grid-cols-[460px_1fr] gap-6 h-full">
-              {/* Left: Form */}
-              <div className="flex flex-col gap-5">
-                <TransactionForm
-                  onSubmit={handleAddTransaction}
-                  students={students}
-                  classes={classes}
-                  feeTypes={settings?.feeTypes}
-                  paymentMethods={settings?.paymentMethods}
-                />
-              </div>
-
-              {/* Right: Table */}
-              <div className="flex flex-col min-h-[500px]">
-                <TransactionTable
-                  transactions={transactions}
-                  onToggleReconciled={handleToggleReconciled}
-                  onToggleInvoiced={handleToggleInvoiced}
-                  onDeleteTransaction={handleDeleteTransaction}
-                  onUpdateTransaction={handleUpdateTransaction}
-                  onGenerateReport={() => setShowReportModal(true)}
-                  userRole={user.role}
-                  students={students}
-                  classes={classes}
-                  feeTypes={settings?.feeTypes}
-                  paymentMethods={settings?.paymentMethods}
-                  settings={settings}
-                />
-              </div>
-            </div>
-
-          ) : activeTab === 'quan-ly-hoc-vien' ? (
-            <StudentManagement
-              classes={isTeacher ? classes.filter(c => c.teacher?.toLowerCase().trim() === user.name.toLowerCase().trim()) : classes}
-              transactions={transactions}
-              onStudentsUpdated={(updated) => setStudents(updated)}
-            />
-
-          ) : activeTab === 'quan-ly-lop' ? (
-            <ClassManagement
+      ) : activeTab === 'tuyen-sinh' ? (
+        <AdmissionManagement />
+      ) : activeTab === 'quan-ly-hoc-vien' ? (
+        <StudentManagement
+          classes={isTeacher ? classes.filter(c => c.teacher?.toLowerCase().trim() === user.name.toLowerCase().trim()) : classes}
+          transactions={transactions}
+          onStudentsUpdated={(updated) => setStudents(updated)}
+          onNavigate={handleTabChange}
+        />
+      ) : activeTab === 'quan-ly-lop' ? (
+        <ClassManagement
+          students={students}
+          transactions={transactions}
+          onClassesUpdated={(updated) => setClasses(updated)}
+          userRole={user.role}
+          userName={user.name}
+        />
+      ) : activeTab === 'diem-danh' ? (
+        <AttendanceManagement
+          students={students}
+          classes={isTeacher ? classes.filter(c => c.teacher?.toLowerCase().trim() === user.name.toLowerCase().trim()) : classes}
+          transactions={transactions}
+        />
+      ) : activeTab === 'thu-tien' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] xl:grid-cols-[460px_1fr] gap-6 h-full">
+          <div className="flex flex-col gap-5">
+            <TransactionForm
+              onSubmit={handleAddTransaction}
               students={students}
+              classes={classes}
+              feeTypes={(settings?.feeTypes || []).filter(ft => ft !== 'Sách' && ft !== 'Đồng phục')}
+              paymentMethods={settings?.paymentMethods || []}
+            />
+          </div>
+          <div className="flex flex-col min-h-[500px]">
+            <TransactionTable
               transactions={transactions}
-              onClassesUpdated={(updated) => setClasses(updated)}
+              onToggleReconciled={handleToggleReconciled}
+              onToggleInvoiced={handleToggleInvoiced}
+              onDeleteTransaction={handleDeleteTransaction}
+              onUpdateTransaction={handleUpdateTransaction}
+              onGenerateReport={() => setShowReportModal(true)}
               userRole={user.role}
-              userName={user.name}
-            />
-
-          ) : activeTab === 'diem-danh' ? (
-            <AttendanceManagement
               students={students}
-              classes={isTeacher ? classes.filter(c => c.teacher?.toLowerCase().trim() === user.name.toLowerCase().trim()) : classes}
-              transactions={transactions}
-            />
-
-          ) : activeTab === 'hoc-phi' ? (
-            <TuitionManagement students={students} transactions={transactions} classes={classes} />
-
-          ) : activeTab === 'nhac-ph' ? (
-            <ParentReminder students={students} transactions={transactions} classes={classes} />
-
-          ) : activeTab === 'bao-cao' || activeTab.startsWith('bc-') ? (
-            <ReportsDashboard
-              transactions={transactions}
-              students={students}
-              expenses={expenses}
-              initialTab={activeTab === 'bao-cao' ? 'dashboard' : activeTab.replace('bc-', '') as any}
-            />
-
-          ) : activeTab === 'quan-ly-user' ? (
-            <UserManagement currentUserUsername={user.username} />
-
-          ) : activeTab === 'cai-dat' ? (
-            <Settings onSettingsUpdated={(updated) => setSettings(updated)} />
-
-          ) : activeTab === 'gv-home' ? (
-            <TeacherHome
-              teacherName={user.name}
               classes={classes}
-              students={students}
-              onNavigate={(tab) => setActiveTab(tab as TabId)}
-            />
-
-          ) : activeTab === 'staff-list' ? (
-            <StaffManagement
-              staff={staff}
-              onStaffUpdated={setStaff}
-            />
-
-          ) : activeTab === 'cham-cong' ? (
-            <TeachingAttendance
-              staff={staff.filter(s => s.role === 'teacher' && s.status === 'active')}
-              classes={classes}
-            />
-
-          ) : activeTab === 'ung-luong' ? (
-            <SalaryAdvanceManager
-              staff={staff.filter(s => s.status === 'active')}
-            />
-
-          ) : activeTab === 'bang-luong' ? (
-            <SalaryDashboard
-              staff={staff}
-              classes={classes}
+              feeTypes={(settings?.feeTypes || []).filter(ft => ft !== 'Sách' && ft !== 'Đồng phục')}
+              paymentMethods={settings?.paymentMethods || []}
               settings={settings}
             />
+          </div>
+        </div>
+      ) : activeTab === 'chi-phi' ? (
+        <ExpenseManagement
+          expenses={expenses}
+          setExpenses={setExpenses}
+          settings={settings}
+          currentUser={user}
+        />
+      ) : activeTab === 'hoc-phi' ? (
+        <TuitionManagement students={students} transactions={transactions} classes={classes} enrollments={enrollments} refreshAllData={refreshAllData} />
+      ) : activeTab === 'nhac-ph' ? (
+        <ParentReminder students={students} transactions={transactions} classes={classes} enrollments={enrollments} />
+      ) : activeTab === 'inventory' ? (
+        <InventoryManagement />
+      ) : activeTab === 'staff-list' ? (
+        <StaffManagement staff={staff} onStaffUpdated={setStaff} />
+      ) : activeTab === 'cham-cong' ? (
+        <TeachingAttendance
+          staff={staff.filter(s => (s.role === 'teacher' || s.role === 'teaching_assistant') && s.status === 'active')}
+          classes={classes}
+        />
+      ) : activeTab === 'ung-luong' ? (
+        <SalaryAdvanceManager staff={staff.filter(s => s.status === 'active')} />
+      ) : activeTab === 'bang-luong' ? (
+        <SalaryDashboard staff={staff} classes={classes} settings={settings} />
+      ) : activeTab === 'huong-dan' ? (
+        <UserGuide onNavigate={(tab) => handleTabChange(tab as TabId)} />
+      ) : activeTab === 'quan-ly-user' ? (
+        <UserManagement currentUserUsername={user.username} />
+      ) : activeTab === 'cai-dat' ? (
+        <Settings onSettingsUpdated={(updated) => setSettings(updated)} />
+      ) : activeTab === 'gv-home' ? (
+        <TeacherHome
+          teacherName={user.name}
+          classes={classes}
+          students={students}
+          onNavigate={(tab) => handleTabChange(tab as TabId)}
+        />
+      ) : activeTab === 'bc-dashboard' || activeTab.startsWith('bc-') ? (
+        <ReportsDashboard
+          selectedGroupId={getGroupIdFromTab(activeTab)}
+          onGroupIdChange={(newGroupId) => {
+            const tabMap: Record<string, TabId> = {
+              'grp_overview': 'bc-dashboard',
+              'grp_students': 'bc-student',
+              'grp_classes': 'bc-class',
+              'grp_tuition': 'bc-tuition',
+              'grp_finance': 'bc-finance',
+              'grp_staff': 'bc-staff',
+              'grp_reconciliation': 'bc-audit',
+              'grp_admission': 'bc-leads',
+            };
+            if (tabMap[newGroupId]) {
+              handleTabChange(tabMap[newGroupId]);
+            }
+          }}
+          transactions={transactions}
+          students={students}
+          classes={classes}
+          expenses={expenses}
+          staff={staff}
+          attendance={attendance}
+          advances={advances}
+          salaries={salaries}
+          dailyCloses={dailyCloses}
+          auditLogs={auditLogs}
+          teachingLogs={teachingLogs}
+          systemParameters={systemParameters}
+          admissionLeads={admissionLeads}
+          enrollments={enrollments}
+        />
+      ) : null}
 
-          ) : activeTab === 'chi-phi' ? (
-            <ExpenseManagement
-              expenses={expenses}
-              setExpenses={setExpenses}
-              settings={settings}
-              currentUser={user}
-            />
-
-          ) : activeTab === 'huong-dan' ? (
-            <UserGuide onNavigate={(tab) => setActiveTab(tab as TabId)} />
-
-          ) : null}
-        </main>
-      </div>
-
-      {/* ── Modals ─────────────────────────────────────────────────────────── */}
+      {/* Modals */}
       {showReportModal && (
         <DailyReportModal
           transactions={transactions}
@@ -901,7 +709,7 @@ function AppInner() {
           }}
         />
       )}
-    </div>
+    </MainLayout>
   );
 }
 
