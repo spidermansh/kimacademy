@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateBody } from '../utils/validate';
+import { createClassSchema } from '../schemas';
 
 export const classesRouter = Router();
 
@@ -72,12 +74,8 @@ classesRouter.get('/classes', async (req, res) => {
 });
 
 // POST create class
-classesRouter.post('/classes', requireAcademicRole, async (req, res) => {
+classesRouter.post('/classes', requireAcademicRole, validateBody(createClassSchema), async (req, res) => {
   const data = req.body;
-  
-  if (!data.name || !data.teacherId) {
-    return res.status(400).json({ message: 'Thiếu tên lớp hoặc giáo viên chủ nhiệm' });
-  }
 
   try {
     const existing = await prisma.class.findUnique({

@@ -3,6 +3,8 @@ import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { generateUniqueCode } from '../utils/codes';
 import { monthRange } from '../utils/dates';
+import { validateBody } from '../utils/validate';
+import { createAdmissionLeadSchema } from '../schemas';
 
 export const admissionsRouter = Router();
 
@@ -59,11 +61,8 @@ admissionsRouter.get('/admission-leads/:id', async (req, res) => {
 });
 
 // POST create admission lead
-admissionsRouter.post('/admission-leads', requireAdmissionRole, async (req, res) => {
+admissionsRouter.post('/admission-leads', requireAdmissionRole, validateBody(createAdmissionLeadSchema), async (req, res) => {
   const data = req.body;
-  if (!data.studentName || !data.parentPhone) {
-    return res.status(400).json({ message: 'Thiếu tên học viên hoặc SĐT phụ huynh' });
-  }
 
   try {
     // Generate lead code if not provided

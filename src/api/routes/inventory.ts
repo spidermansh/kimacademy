@@ -1,6 +1,8 @@
 ﻿import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateBody } from '../utils/validate';
+import { createInventoryMovementSchema } from '../schemas';
 
 export const inventoryRouter = Router();
 
@@ -203,7 +205,7 @@ inventoryRouter.get('/inventory/movements', async (req, res) => {
   }
 });
 
-inventoryRouter.post('/inventory/movements', requireInventoryRole, async (req, res) => {
+inventoryRouter.post('/inventory/movements', requireInventoryRole, validateBody(createInventoryMovementSchema), async (req, res) => {
   const {
     movementType,
     itemId,
@@ -221,10 +223,6 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, async (req, r
     note,
     movementDate
   } = req.body;
-
-  if (!movementType || !itemId || !quantity || !movementDate) {
-    return res.status(400).json({ message: 'Thiếu thông tin nhập xuất bắt buộc' });
-  }
 
   const qty = Number(quantity);
   const cost = unitCost ? Number(unitCost) : 0;

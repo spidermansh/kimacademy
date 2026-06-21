@@ -3,9 +3,10 @@ import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth';
 import { isTuitionRevenue, REVENUE_CATEGORY_TUITION_OFFLINE } from '../../shared/constants';
 import { validateBody } from '../utils/validate';
-import { createTransactionSchema, createExpenseSchema } from '../schemas';
+import { createTransactionSchema, createExpenseSchema, dailyCloseSchema } from '../schemas';
 import { recalcEnrollmentLedger } from '../services/ledger';
 import { coerceJson } from '../../shared/json';
+import { writeAudit } from '../utils/audit';
 
 export const financeRouter = Router();
 
@@ -178,14 +179,11 @@ financeRouter.post('/transactions', requireFinanceRole, validateBody(createTrans
     }
 
     // Add audit log
-    await tx.auditLog.create({
-      data: {
-        action: 'CREATE_TRANSACTION',
-        entity: isTuition ? 'tuition_transaction' : 'revenue_other',
-        entityId: saved.id,
-        details: `Thu tiền: ${Number(data.amount).toLocaleString('vi-VN')}đ — Danh mục: ${data.revenueCategory || ''}`,
-        user: req.user?.name || req.user?.username || 'unknown'
-      }
+    await writeAudit(tx, req, {
+      action: 'CREATE_TRANSACTION',
+      entity: isTuition ? 'tuition_transaction' : 'revenue_other',
+      entityId: saved.id,
+      details: `Thu tiền: ${Number(data.amount).toLocaleString('vi-VN')}đ — Danh mục: ${data.revenueCategory || ''}`,
     });
 
       return saved;
@@ -225,14 +223,11 @@ financeRouter.delete('/transactions/:id', requireAdmin, async (req, res) => {
     }
 
     // Add audit log
-    await tx.auditLog.create({
-      data: {
-        action: 'DELETE_TRANSACTION',
-        entity: 'transaction',
-        entityId: id,
-        details: `Xóa giao dịch #${id}`,
-        user: req.user?.name || req.user?.username || 'unknown'
-      }
+    await writeAudit(tx, req, {
+      action: 'DELETE_TRANSACTION',
+      entity: 'transaction',
+      entityId: id,
+      details: `Xóa giao dịch #${id}`,
     });
     });
 
@@ -406,11 +401,8 @@ financeRouter.get('/daily-closes', async (req, res) => {
 });
 
 // POST save daily close
-financeRouter.post('/daily-close', requireFinanceRole, async (req, res) => {
+financeRouter.post('/daily-close', requireFinanceRole, validateBody(dailyCloseSchema), async (req, res) => {
   const { date, summary, note } = req.body;
-  if (!date || !summary) {
-    return res.status(400).json({ message: 'Thiếu ngày chốt ca hoặc tóm tắt số liệu chốt' });
-  }
 
   try {
     const existing = await prisma.dailyClose.findFirst({
@@ -432,14 +424,11 @@ financeRouter.post('/daily-close', requireFinanceRole, async (req, res) => {
     });
 
     // Add audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'DAILY_CLOSE',
-        entity: 'daily_close',
-        entityId: created.id,
-        details: `Chốt ca ngày ${date} thành công.`,
-        user: req.user?.name || req.user?.username || 'unknown'
-      }
+    await writeAudit(prisma, req, {
+      action: 'DAILY_CLOSE',
+      entity: 'daily_close',
+      entityId: created.id,
+      details: `Chốt ca ngày ${date} thành công.`,
     });
 
     res.status(201).json(created);

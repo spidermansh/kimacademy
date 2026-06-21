@@ -4,6 +4,9 @@ import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth
 import { generateUniqueCode } from '../utils/codes';
 import { toArray } from '../../shared/json';
 import { monthRange, toDateStr } from '../utils/dates';
+import { validateBody } from '../utils/validate';
+import { createStaffSchema, createTeachingLogSchema, createSalaryAdvanceSchema } from '../schemas';
+import { writeAudit } from '../utils/audit';
 
 export const payrollRouter = Router();
 
@@ -42,11 +45,8 @@ payrollRouter.get('/staff', async (req, res) => {
 });
 
 // POST create staff member
-payrollRouter.post('/staff', requireAdmin, async (req, res) => {
+payrollRouter.post('/staff', requireAdmin, validateBody(createStaffSchema), async (req, res) => {
   const data = req.body;
-  if (!data.name || !data.role) {
-    return res.status(400).json({ message: 'Thiếu tên nhân viên hoặc vai trò' });
-  }
 
   try {
     const startMonth = (data.startDate || new Date().toISOString().slice(0, 10)).slice(0, 7);
@@ -152,26 +152,23 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
         changes.push(`Phụ cấp MĐ: ${existing.otherMonthlyAllowance || 0} -> ${otherAllowNew}`);
       }
 
-      await prisma.auditLog.create({
-        data: {
-          action: 'UPDATE_STAFF_SALARY',
-          entity: 'staff',
-          entityId: id,
-          details: `Điều chỉnh lương nhân sự ${existing.name} áp dụng từ tháng ${targetMonth}. Thay đổi: ${changes.join(', ')}`,
-          oldValue: {
-            baseSalary: existing.baseSalary,
-            ratePerSession: existing.ratePerSession,
-            ratePerHour: existing.ratePerHour,
-            otherMonthlyAllowance: existing.otherMonthlyAllowance
-          },
-          newValue: {
-            baseSalary: baseSalNew,
-            ratePerSession: ratePerSessNew,
-            ratePerHour: ratePerHrNew,
-            otherMonthlyAllowance: otherAllowNew
-          },
-          user: req.user?.name || req.user?.username || 'unknown'
-        }
+      await writeAudit(prisma, req, {
+        action: 'UPDATE_STAFF_SALARY',
+        entity: 'staff',
+        entityId: id,
+        details: `Điều chỉnh lương nhân sự ${existing.name} áp dụng từ tháng ${targetMonth}. Thay đổi: ${changes.join(', ')}`,
+        oldValue: {
+          baseSalary: existing.baseSalary,
+          ratePerSession: existing.ratePerSession,
+          ratePerHour: existing.ratePerHour,
+          otherMonthlyAllowance: existing.otherMonthlyAllowance
+        },
+        newValue: {
+          baseSalary: baseSalNew,
+          ratePerSession: ratePerSessNew,
+          ratePerHour: ratePerHrNew,
+          otherMonthlyAllowance: otherAllowNew
+        },
       });
     }
 
@@ -292,11 +289,8 @@ payrollRouter.get('/teaching-logs', async (req, res) => {
 });
 
 // POST create manual teaching log
-payrollRouter.post('/teaching-logs', requirePayrollRole, async (req, res) => {
+payrollRouter.post('/teaching-logs', requirePayrollRole, validateBody(createTeachingLogSchema), async (req, res) => {
   const data = req.body;
-  if (!data.staffId || !data.date || !data.classId) {
-    return res.status(400).json({ message: 'Thiếu thông tin chấm công' });
-  }
 
   try {
     const created = await prisma.teachingLog.create({
@@ -370,11 +364,8 @@ payrollRouter.get('/salary-advances', async (req, res) => {
 });
 
 // POST create salary advance
-payrollRouter.post('/salary-advances', requirePayrollRole, async (req, res) => {
+payrollRouter.post('/salary-advances', requirePayrollRole, validateBody(createSalaryAdvanceSchema), async (req, res) => {
   const data = req.body;
-  if (!data.staffId || !data.amount || !data.date) {
-    return res.status(400).json({ message: 'Thiếu thông tin tạm ứng' });
-  }
 
   try {
     const created = await prisma.salaryAdvance.create({
@@ -808,13 +799,10 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
     }
 
     // Add audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'CALCULATE_PAYROLL',
-        entity: 'payroll',
-        details: `Tính lương tháng ${month} cho ${results.length} nhân viên`,
-        user: req.user?.name || req.user?.username || 'unknown'
-      }
+    await writeAudit(prisma, req, {
+      action: 'CALCULATE_PAYROLL',
+      entity: 'payroll',
+      details: `Tính lương tháng ${month} cho ${results.length} nhân viên`,
     });
 
     res.json(results);

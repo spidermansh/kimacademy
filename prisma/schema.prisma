@@ -411,8 +411,12 @@ model AuditLog {
   details   String?
   oldValue  Json?    // Giá trị cũ (jsonb)
   newValue  Json?    // Giá trị mới (jsonb)
-  user      String
+  user      String   // Tên hiển thị (giữ để tương thích)
+  userId    String?  // FK tới User.id để truy vết chắc chắn
   timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
 }
 
 // 21. SystemParameter - Tham số hệ thống cấu hình

@@ -47,3 +47,73 @@ export const createEnrollmentSchema = z
     isActive: z.boolean().optional(),
   })
   .passthrough();
+
+// POST /users — tạo tài khoản (admin).
+export const createUserSchema = z
+  .object({
+    username: z.string().min(1, 'bắt buộc'),
+    password: z.string().min(1, 'bắt buộc'),
+    name: z.string().min(1, 'bắt buộc'),
+    role: z.string().min(1, 'bắt buộc'),
+  })
+  .passthrough();
+
+// POST /classes — tạo lớp học.
+export const createClassSchema = z
+  .object({
+    name: z.string().min(1, 'bắt buộc'),
+    teacherId: z.string().min(1, 'bắt buộc'),
+  })
+  .passthrough();
+
+// POST /staff — tạo nhân sự.
+export const createStaffSchema = z
+  .object({
+    name: z.string().min(1, 'bắt buộc'),
+    role: z.string().min(1, 'bắt buộc'),
+  })
+  .passthrough();
+
+// POST /teaching-logs — chấm công giảng dạy thủ công.
+export const createTeachingLogSchema = z
+  .object({
+    staffId: z.string().min(1, 'bắt buộc'),
+    classId: z.string().min(1, 'bắt buộc'),
+    date: dateString,
+  })
+  .passthrough();
+
+// POST /salary-advances — tạm ứng lương.
+export const createSalaryAdvanceSchema = z
+  .object({
+    staffId: z.string().min(1, 'bắt buộc'),
+    amount: positiveAmount,
+    date: dateString,
+  })
+  .passthrough();
+
+// POST /admission-leads — tạo lead tuyển sinh.
+export const createAdmissionLeadSchema = z
+  .object({
+    studentName: z.string().min(1, 'bắt buộc'),
+    parentPhone: z.string().min(1, 'bắt buộc'),
+  })
+  .passthrough();
+
+// POST /inventory/movements — nhập/xuất kho.
+export const createInventoryMovementSchema = z
+  .object({
+    movementType: z.string().min(1, 'bắt buộc'),
+    itemId: z.string().min(1, 'bắt buộc'),
+    quantity: z.coerce.number().refine((n) => Number.isFinite(n) && n !== 0, 'phải khác 0'),
+    movementDate: dateString,
+  })
+  .passthrough();
+
+// POST /daily-close — chốt ca cuối ngày.
+export const dailyCloseSchema = z
+  .object({
+    date: dateString,
+    summary: z.union([z.string(), z.record(z.string(), z.any())]),
+  })
+  .passthrough();

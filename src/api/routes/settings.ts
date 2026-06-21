@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { writeAudit } from '../utils/audit';
 
 export const settingsRouter = Router();
 
@@ -133,14 +134,11 @@ settingsRouter.post('/system-parameters', requireAdmin, async (req, res) => {
     });
 
     // Add audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'UPDATE_SYSTEM_PARAMETER',
-        entity: 'system_parameter',
-        entityId: updated.id,
-        details: `Cập nhật tham số ${key} thành ${value}. Lý do: ${reason || 'Không có'}`,
-        user: req.user?.name || req.user?.username || 'admin'
-      }
+    await writeAudit(prisma, req, {
+      action: 'UPDATE_SYSTEM_PARAMETER',
+      entity: 'system_parameter',
+      entityId: updated.id,
+      details: `Cập nhật tham số ${key} thành ${value}. Lý do: ${reason || 'Không có'}`,
     });
 
     res.json(updated);
@@ -193,6 +191,7 @@ settingsRouter.post('/audit-logs', async (req, res) => {
         entityId: entityId || '',
         details: details || '',
         user: req.user?.name || req.user?.username || 'unknown',
+        userId: req.user?.userId || null,
       },
     });
     res.status(201).json(created);

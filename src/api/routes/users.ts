@@ -2,6 +2,8 @@ import { Router } from 'express';
 import bcryptjs from 'bcryptjs';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { validateBody } from '../utils/validate';
+import { createUserSchema } from '../schemas';
 
 export const usersRouter = Router();
 
@@ -29,11 +31,8 @@ usersRouter.get('/users', async (req, res) => {
   }
 });
 
-usersRouter.post('/users', async (req, res) => {
+usersRouter.post('/users', validateBody(createUserSchema), async (req, res) => {
   const { username, password, name, role } = req.body;
-  if (!username || !password || !name || !role) {
-    return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' });
-  }
 
   try {
     const existing = await prisma.user.findUnique({

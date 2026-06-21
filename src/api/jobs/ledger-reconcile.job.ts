@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { findLedgerDrift } from '../services/ledger';
+import { writeAudit } from '../utils/audit';
 
 /**
  * Job đối soát sổ cái định kỳ: phát hiện chênh lệch giữa sổ cái đã lưu và dữ
@@ -23,13 +24,10 @@ async function runLedgerDriftCheck() {
         link: '/finance',
       },
     });
-    await prisma.auditLog.create({
-      data: {
-        action: 'LEDGER_DRIFT_DETECTED',
-        entity: 'tuition_ledger',
-        details: message,
-        user: 'system',
-      },
+    await writeAudit(prisma, undefined, {
+      action: 'LEDGER_DRIFT_DETECTED',
+      entity: 'tuition_ledger',
+      details: message,
     });
     console.warn(`[ledger-reconcile] ${message}`);
   } catch (err) {

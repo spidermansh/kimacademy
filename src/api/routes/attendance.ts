@@ -3,6 +3,7 @@ import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getFeeAtDate, parseFeeHistory } from '../../shared/business/tuition';
 import { recalcEnrollmentLedger } from '../services/ledger';
+import { writeAudit } from '../utils/audit';
 
 export const attendanceRouter = Router();
 
@@ -232,13 +233,10 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
     }
 
     // 5. Add audit log
-    await tx.auditLog.create({
-      data: {
-        action: 'SAVE_ATTENDANCE_BATCH',
-        entity: 'attendance',
-        details: `Điểm danh lớp ${cls.name} ngày ${date}`,
-        user: req.user?.name || req.user?.username || 'unknown'
-      }
+    await writeAudit(tx, req, {
+      action: 'SAVE_ATTENDANCE_BATCH',
+      entity: 'attendance',
+      details: `Điểm danh lớp ${cls.name} ngày ${date}`,
     });
 
       return savedRecords;

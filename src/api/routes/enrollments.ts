@@ -6,6 +6,7 @@ import { validateBody } from '../utils/validate';
 import { createEnrollmentSchema } from '../schemas';
 import { recalcEnrollmentLedger } from '../services/ledger';
 import { parseFeeHistory } from '../../shared/business/tuition';
+import { writeAudit } from '../utils/audit';
 
 export const enrollmentsRouter = Router();
 
@@ -234,14 +235,11 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
     });
 
     // Audit log
-    await tx.auditLog.create({
-      data: {
-        action: 'TRANSFER_CLASS',
-        entity: 'student',
-        entityId: studentId,
-        details: `Chuyển lớp học viên ${studentName}: ${oldClassName || ''} -> ${newClassName}`,
-        user: req.user?.name || req.user?.username || 'unknown'
-      }
+    await writeAudit(tx, req, {
+      action: 'TRANSFER_CLASS',
+      entity: 'student',
+      entityId: studentId,
+      details: `Chuyển lớp học viên ${studentName}: ${oldClassName || ''} -> ${newClassName}`,
     });
 
     });
