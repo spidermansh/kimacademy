@@ -1,6 +1,7 @@
 ﻿import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth';
+import { isTuitionRevenue, REVENUE_CATEGORY_TUITION_OFFLINE } from '../../shared/constants';
 
 export const financeRouter = Router();
 
@@ -52,11 +53,11 @@ financeRouter.get('/transactions', async (req, res) => {
         className: activeEnroll?.class?.name || '',
         amount: t.amount,
         paymentMethod: t.paymentMethod,
-        revenueCategory: 'Há»c phÃ­ offline',
+        revenueCategory: REVENUE_CATEGORY_TUITION_OFFLINE,
         notes: t.notes || '',
         isReconciled: t.isReconciled,
         isInvoiced: t.isInvoiced,
-        senderName: t.notes?.match(/phá»¥ huynh:?\s*(.*)$/i)?.[1] || '',
+        senderName: t.notes?.match(/phụ huynh:?\s*(.*)$/i)?.[1] || '',
         source: t.source || 'manual'
       };
     });
@@ -69,7 +70,7 @@ financeRouter.get('/transactions', async (req, res) => {
         createdAt: t.createdAt.toISOString(),
         paymentDate: t.paymentDate,
         studentId: t.studentId || '',
-        studentName: t.student?.name || 'KhÃ¡ch vÃ£ng lai',
+        studentName: t.student?.name || 'Khách vãng lai',
         className: activeEnroll?.class?.name || '',
         amount: t.amount,
         paymentMethod: t.paymentMethod,
@@ -90,7 +91,7 @@ financeRouter.get('/transactions', async (req, res) => {
     res.json(combined);
   } catch (error: any) {
     if (error.message === 'TRANSACTION_NOT_FOUND') {
-      return res.status(404).json({ message: 'KhÃ´ng tÃ¬m tháº¥y giao dá»‹ch' });
+      return res.status(404).json({ message: 'Không tìm thấy giao dịch' });
     }
     res.status(500).json({ message: error.message });
   }
@@ -100,19 +101,20 @@ financeRouter.get('/transactions', async (req, res) => {
 financeRouter.post('/transactions', requireFinanceRole, async (req, res) => {
   const data = req.body;
   if (!data.amount || !data.paymentDate || !data.paymentMethod) {
-    return res.status(400).json({ message: 'Thiáº¿u thÃ´ng tin giao dá»‹ch báº¯t buá»™c' });
+    return res.status(400).json({ message: 'Thiếu thông tin giao dịch bắt buộc' });
+  }
+
+  const isTuition = isTuitionRevenue(data.revenueCategory);
+  // Validate trước khi mở transaction để tránh gửi response 2 lần (header đã gửi).
+  if (isTuition && !data.studentId) {
+    return res.status(400).json({ message: 'Thu học phí yêu cầu chọn học viên' });
   }
 
   try {
-    const isTuition = data.revenueCategory === 'Há»c phÃ­ offline';
     const saved = await prisma.$transaction(async (tx) => {
       let saved;
 
     if (isTuition) {
-      if (!data.studentId) {
-        return res.status(400).json({ message: 'Thu há»c phÃ­ yÃªu cáº§u chá»n há»c viÃªn' });
-      }
-
       // Find student and their enrollments
       const student = await tx.student.findUnique({
         where: { id: data.studentId },
@@ -144,7 +146,7 @@ financeRouter.post('/transactions', requireFinanceRole, async (req, res) => {
           amount: Number(data.amount),
           paymentDate: data.paymentDate,
           paymentMethod: data.paymentMethod,
-          term: data.term || 'Ká»³ há»c hiá»‡n táº¡i',
+          term: data.term || 'Kỳ học hiện tại',
           notes: data.notes || '',
           isReconciled: false,
           isInvoiced: false,
@@ -180,7 +182,7 @@ financeRouter.post('/transactions', requireFinanceRole, async (req, res) => {
       saved = await tx.revenueOther.create({
         data: {
           id: data.id || undefined,
-          category: data.revenueCategory || 'KhÃ¡c',
+          category: data.revenueCategory || 'Khác',
           amount: Number(data.amount),
           paymentDate: data.paymentDate,
           paymentMethod: data.paymentMethod,
@@ -198,7 +200,7 @@ financeRouter.post('/transactions', requireFinanceRole, async (req, res) => {
         action: 'CREATE_TRANSACTION',
         entity: isTuition ? 'tuition_transaction' : 'revenue_other',
         entityId: saved.id,
-        details: `Thu tiá»n: ${Number(data.amount).toLocaleString('vi-VN')}Ä‘ â€” Danh má»¥c: ${data.revenueCategory || ''}`,
+        details: `Thu tiền: ${Number(data.amount).toLocaleString('vi-VN')}đ — Danh mục: ${data.revenueCategory || ''}`,
         user: req.user?.name || req.user?.username || 'unknown'
       }
     });
@@ -264,16 +266,16 @@ financeRouter.delete('/transactions/:id', requireAdmin, async (req, res) => {
         action: 'DELETE_TRANSACTION',
         entity: 'transaction',
         entityId: id,
-        details: `XÃ³a giao dá»‹ch #${id}`,
+        details: `Xóa giao dịch #${id}`,
         user: req.user?.name || req.user?.username || 'unknown'
       }
     });
     });
 
-    res.json({ success: true, message: 'XÃ³a giao dá»‹ch thÃ nh cÃ´ng' });
+    res.json({ success: true, message: 'Xóa giao dịch thành công' });
   } catch (error: any) {
     if (error.message === 'TRANSACTION_NOT_FOUND') {
-      return res.status(404).json({ message: 'KhÃ´ng tÃ¬m tháº¥y giao dá»‹ch' });
+      return res.status(404).json({ message: 'Không tìm thấy giao dịch' });
     }
     res.status(500).json({ message: error.message });
   }
@@ -328,7 +330,7 @@ financeRouter.patch('/transactions/:id/invoice', requireAdmin, async (req, res) 
 
 
 // ==========================================
-// EXPENSES (Chi phÃ­ váº­n hÃ nh)
+// EXPENSES (Chi phí vận hành)
 // ==========================================
 
 // GET all expenses
@@ -357,14 +359,14 @@ financeRouter.get('/expenses', async (req, res) => {
 financeRouter.post('/expenses', requireFinanceRole, async (req, res) => {
   const data = req.body;
   if (!data.amount || !data.date || !data.description || !data.paymentMethod) {
-    return res.status(400).json({ message: 'Thiáº¿u thÃ´ng tin chi phÃ­ báº¯t buá»™c' });
+    return res.status(400).json({ message: 'Thiếu thông tin chi phí bắt buộc' });
   }
 
   try {
     const created = await prisma.expense.create({
       data: {
         date: data.date,
-        category: data.category || 'Chi khÃ¡c',
+        category: data.category || 'Chi khác',
         description: data.description,
         amount: Number(data.amount),
         paymentMethod: data.paymentMethod,
@@ -390,7 +392,7 @@ financeRouter.put('/expenses/:id', requireFinanceRole, async (req, res) => {
   try {
     const existing = await prisma.expense.findUnique({ where: { id } });
     if (!existing) {
-      return res.status(404).json({ message: 'KhÃ´ng tÃ¬m tháº¥y chi phÃ­' });
+      return res.status(404).json({ message: 'Không tìm thấy chi phí' });
     }
 
     const updated = await prisma.expense.update({
@@ -419,7 +421,7 @@ financeRouter.delete('/expenses/:id', requireFinanceRole, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.expense.delete({ where: { id } });
-    res.json({ success: true, message: 'XÃ³a chi phÃ­ thÃ nh cÃ´ng.' });
+    res.json({ success: true, message: 'Xóa chi phí thành công.' });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -427,7 +429,7 @@ financeRouter.delete('/expenses/:id', requireFinanceRole, async (req, res) => {
 
 
 // ==========================================
-// DAILY CLOSING (Chá»‘t ca Ä‘á»‘i soÃ¡t cuá»‘i ngÃ y)
+// DAILY CLOSING (Chốt ca đối soát cuối ngày)
 // ==========================================
 
 // GET daily closes
@@ -446,7 +448,7 @@ financeRouter.get('/daily-closes', async (req, res) => {
 financeRouter.post('/daily-close', requireFinanceRole, async (req, res) => {
   const { date, summary, note } = req.body;
   if (!date || !summary) {
-    return res.status(400).json({ message: 'Thiáº¿u ngÃ y chá»‘t ca hoáº·c tÃ³m táº¯t sá»‘ liá»‡u chá»‘t' });
+    return res.status(400).json({ message: 'Thiếu ngày chốt ca hoặc tóm tắt số liệu chốt' });
   }
 
   try {
@@ -454,7 +456,7 @@ financeRouter.post('/daily-close', requireFinanceRole, async (req, res) => {
       where: { date }
     });
     if (existing) {
-      return res.status(400).json({ message: `NgÃ y ${date} Ä‘Ã£ Ä‘Æ°á»£c chá»‘t ca trÆ°á»›c Ä‘Ã³.` });
+      return res.status(400).json({ message: `Ngày ${date} đã được chốt ca trước đó.` });
     }
 
     const created = await prisma.dailyClose.create({
@@ -474,7 +476,7 @@ financeRouter.post('/daily-close', requireFinanceRole, async (req, res) => {
         action: 'DAILY_CLOSE',
         entity: 'daily_close',
         entityId: created.id,
-        details: `Chá»‘t ca ngÃ y ${date} thÃ nh cÃ´ng.`,
+        details: `Chốt ca ngày ${date} thành công.`,
         user: req.user?.name || req.user?.username || 'unknown'
       }
     });

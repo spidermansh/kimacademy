@@ -65,7 +65,7 @@ enrollmentsRouter.get('/enrollments', async (req, res) => {
 enrollmentsRouter.post('/enrollments', requireAcademicRole, async (req, res) => {
   const data = req.body;
   if (!data.studentId || !data.classId || !data.feePerSession) {
-    return res.status(400).json({ message: 'Thiáº¿u thÃ´ng tin Ä‘Äƒng kÃ½' });
+    return res.status(400).json({ message: 'Thiếu thông tin đăng ký' });
   }
 
   try {
@@ -107,7 +107,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
   const { studentId, studentName, oldClassName, newClassName, newFeePerSession, transferDate, transferNote } = req.body;
 
   if (!studentId || !newClassName || !transferDate) {
-    return res.status(400).json({ message: 'Thiáº¿u thÃ´ng tin chuyá»ƒn lá»›p' });
+    return res.status(400).json({ message: 'Thiếu thông tin chuyển lớp' });
   }
 
   try {
@@ -122,7 +122,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
       }
     });
     if (!newClass) {
-      return res.status(400).json({ message: `KhÃ´ng tÃ¬m tháº¥y lá»›p há»c má»›i: ${newClassName}` });
+      return res.status(400).json({ message: `Không tìm thấy lớp học mới: ${newClassName}` });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -152,7 +152,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
             data: {
               isActive: false,
               endDate: transferDate,
-              transferNote: transferNote || `Chuyá»ƒn sang lá»›p ${newClassName}`
+              transferNote: transferNote || `Chuyển sang lớp ${newClassName}`
             }
           });
 
@@ -177,7 +177,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
         isActive: true,
         createdBy: req.user?.name || req.user?.username || 'unknown',
         feeHistory: '[]',
-        transferNote: `Chuyá»ƒn tá»« lá»›p ${oldClassName || 'KhÃ´ng lá»›p'}`
+        transferNote: `Chuyển từ lớp ${oldClassName || 'Không lớp'}`
       }
     });
 
@@ -202,8 +202,8 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
           enrollmentId: oldEnrollmentId,
           amount: -oldBalance,
           paymentDate: transferDate,
-          paymentMethod: 'Chuyá»ƒn sá»‘ dÆ°',
-          notes: `Chuyá»ƒn sá»‘ dÆ° sang lá»›p ${newClassName}`,
+          paymentMethod: 'Chuyển số dư',
+          notes: `Chuyển số dư sang lớp ${newClassName}`,
           createdBy: req.user?.name || req.user?.username || 'unknown'
         }
       });
@@ -232,8 +232,8 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
           enrollmentId: newEnroll.id,
           amount: oldBalance,
           paymentDate: transferDate,
-          paymentMethod: 'Chuyá»ƒn sá»‘ dÆ°',
-          notes: `Nháº­n sá»‘ dÆ° chuyá»ƒn tá»« lá»›p ${oldClassName}`,
+          paymentMethod: 'Chuyển số dư',
+          notes: `Nhận số dư chuyển từ lớp ${oldClassName}`,
           createdBy: req.user?.name || req.user?.username || 'unknown'
         }
       });
@@ -264,13 +264,13 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
         action: 'TRANSFER_CLASS',
         entity: 'student',
         entityId: studentId,
-        details: `Chuyá»ƒn lá»›p há»c viÃªn ${studentName}: ${oldClassName || ''} -> ${newClassName}`,
+        details: `Chuyển lớp học viên ${studentName}: ${oldClassName || ''} -> ${newClassName}`,
         user: req.user?.name || req.user?.username || 'unknown'
       }
     });
 
     });
-    res.json({ success: true, message: 'Chuyá»ƒn lá»›p thÃ nh cÃ´ng' });
+    res.json({ success: true, message: 'Chuyển lớp thành công' });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -280,7 +280,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
 enrollmentsRouter.post('/enrollments/add-class', requireAcademicRole, async (req, res) => {
   const { studentId, studentName, className, feePerSession, startDate } = req.body;
   if (!studentId || !className || !startDate) {
-    return res.status(400).json({ message: 'Thiáº¿u thÃ´ng tin Ä‘Äƒng kÃ½ lá»›p' });
+    return res.status(400).json({ message: 'Thiếu thông tin đăng ký lớp' });
   }
 
   try {
@@ -294,14 +294,14 @@ enrollmentsRouter.post('/enrollments/add-class', requireAcademicRole, async (req
       }
     });
     if (!cls) {
-      return res.status(404).json({ message: `KhÃ´ng tÃ¬m tháº¥y lá»›p há»c: ${className}` });
+      return res.status(404).json({ message: `Không tìm thấy lớp học: ${className}` });
     }
 
     const existing = await prisma.enrollment.findFirst({
       where: { studentId, classId: cls.id, isActive: true }
     });
     if (existing) {
-      return res.status(400).json({ message: 'Há»c viÃªn Ä‘Ã£ Ä‘Äƒng kÃ½ há»c lá»›p nÃ y' });
+      return res.status(400).json({ message: 'Học viên đã đăng ký học lớp này' });
     }
 
     const created = await prisma.$transaction(async (tx) => {
@@ -314,7 +314,7 @@ enrollmentsRouter.post('/enrollments/add-class', requireAcademicRole, async (req
         isActive: true,
         createdBy: req.user?.name || req.user?.username || 'unknown',
         feeHistory: '[]',
-        transferNote: 'ÄÄƒng kÃ½ thÃªm lá»›p há»c'
+        transferNote: 'Đăng ký thêm lớp học'
       }
     });
 
@@ -344,7 +344,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, async (req, r
   const { feePerSession, feeChangeMode } = req.body;
 
   if (feePerSession === undefined) {
-    return res.status(400).json({ message: 'Thiáº¿u há»c phÃ­ má»›i' });
+    return res.status(400).json({ message: 'Thiếu học phí mới' });
   }
 
   const newFee = Number(feePerSession);
@@ -357,7 +357,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, async (req, r
     });
 
     if (!enrollment) {
-      return res.status(404).json({ message: 'KhÃ´ng tÃ¬m tháº¥y thÃ´ng tin Ä‘Äƒng kÃ½ lá»›p' });
+      return res.status(404).json({ message: 'Không tìm thấy thông tin đăng ký lớp' });
     }
 
     const oldFee = enrollment.feePerSession;
@@ -365,7 +365,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, async (req, r
     if (oldFee !== newFee) {
       const feeHistory = JSON.parse(enrollment.feeHistory || '[]');
       feeHistory.push({
-        changedBy: req.user?.name || req.user?.username || 'Há»‡ thá»‘ng',
+        changedBy: req.user?.name || req.user?.username || 'Hệ thống',
         changedAt: new Date().toISOString(),
         oldFee,
         newFee,
@@ -435,7 +435,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, async (req, r
       });
     }
 
-    res.json({ success: true, message: 'Cáº­p nháº­t há»c phÃ­ thÃ nh cÃ´ng' });
+    res.json({ success: true, message: 'Cập nhật học phí thành công' });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -450,7 +450,7 @@ enrollmentsRouter.delete('/enrollments/:id', requireAcademicRole, async (req, re
   try {
     const enrollment = await prisma.enrollment.findUnique({ where: { id } });
     if (!enrollment) {
-      return res.status(404).json({ message: 'KhÃ´ng tÃ¬m tháº¥y thÃ´ng tin Ä‘Äƒng kÃ½ lá»›p' });
+      return res.status(404).json({ message: 'Không tìm thấy thông tin đăng ký lớp' });
     }
 
     const updated = await prisma.enrollment.update({

@@ -68,7 +68,7 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
   try {
     const { records, teacherId, teacherName, isSubstitute, originalTeacherId, originalTeacherName, classId, date: bodyDate } = req.body;
     if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ message: 'Dá»¯ liá»‡u Ä‘iá»ƒm danh khÃ´ng há»£p lá»‡' });
+      return res.status(400).json({ message: 'Dữ liệu điểm danh không hợp lệ' });
     }
 
     const firstRecord = records[0];
@@ -89,14 +89,14 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
       }
     });
     if (!cls) {
-      return res.status(400).json({ message: `KhÃ´ng tÃ¬m tháº¥y lá»›p há»c ${className || dbClassId}` });
+      return res.status(400).json({ message: `Không tìm thấy lớp học ${className || dbClassId}` });
     }
     dbClassId = cls.id;
 
     // Resolve teacher
     const finalTeacherId = teacherId || cls.teacherId;
     const teacher = await prisma.staffMember.findUnique({ where: { id: finalTeacherId } });
-    const finalTeacherName = teacher?.name || teacherName || 'GiÃ¡o viÃªn';
+    const finalTeacherName = teacher?.name || teacherName || 'Giáo viên';
 
     const savedRecords = await prisma.$transaction(async (tx) => {
     // 1. Find or create Session
@@ -247,7 +247,7 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
             originalTeacherId: isSubstitute ? (originalTeacherId || cls.teacherId) : null,
             hoursWorked: 1.5,
             source: 'auto',
-            note: isSubstitute ? 'Dáº¡y thay' : 'Dáº¡y chÃ­nh'
+            note: isSubstitute ? 'Dạy thay' : 'Dạy chính'
           }
         });
       }
@@ -258,7 +258,7 @@ attendanceRouter.post('/attendance/batch', requireAttendanceRole, async (req, re
       data: {
         action: 'SAVE_ATTENDANCE_BATCH',
         entity: 'attendance',
-        details: `Äiá»ƒm danh lá»›p ${cls.name} ngÃ y ${date}`,
+        details: `Điểm danh lớp ${cls.name} ngày ${date}`,
         user: req.user?.name || req.user?.username || 'unknown'
       }
     });
@@ -331,10 +331,10 @@ attendanceRouter.delete('/attendance/:id', requireAttendanceRole, async (req, re
     }
     });
 
-    res.json({ success: true, message: 'XÃ³a Ä‘iá»ƒm danh thÃ nh cÃ´ng.' });
+    res.json({ success: true, message: 'Xóa điểm danh thành công.' });
   } catch (error: any) {
     if (error.message === 'ATTENDANCE_NOT_FOUND') {
-      return res.status(404).json({ message: 'KhÃ´ng tÃ¬m tháº¥y báº£n ghi Ä‘iá»ƒm danh' });
+      return res.status(404).json({ message: 'Không tìm thấy bản ghi điểm danh' });
     }
     res.status(500).json({ message: error.message });
   }

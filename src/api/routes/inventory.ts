@@ -41,7 +41,7 @@ inventoryRouter.get('/inventory/categories', async (req, res) => {
 
 inventoryRouter.post('/inventory/categories', requireInventoryRole, async (req, res) => {
   const { name, code, description } = req.body;
-  if (!name) return res.status(400).json({ message: 'Thiáº¿u tÃªn danh má»¥c' });
+  if (!name) return res.status(400).json({ message: 'Thiếu tên danh mục' });
   try {
     const created = await prisma.inventoryCategory.create({
       data: {
@@ -71,7 +71,7 @@ inventoryRouter.get('/inventory/suppliers', async (req, res) => {
 
 inventoryRouter.post('/inventory/suppliers', requireInventoryRole, async (req, res) => {
   const { name, phone, email, address, note } = req.body;
-  if (!name) return res.status(400).json({ message: 'Thiáº¿u tÃªn nhÃ  cung cáº¥p' });
+  if (!name) return res.status(400).json({ message: 'Thiếu tên nhà cung cấp' });
   try {
     const created = await prisma.supplier.create({
       data: { name, phone, email, address, note }
@@ -96,7 +96,7 @@ inventoryRouter.get('/inventory/locations', async (req, res) => {
 
 inventoryRouter.post('/inventory/locations', requireInventoryRole, async (req, res) => {
   const { name, description } = req.body;
-  if (!name) return res.status(400).json({ message: 'Thiáº¿u tÃªn vá»‹ trÃ­ kho' });
+  if (!name) return res.status(400).json({ message: 'Thiếu tên vị trí kho' });
   try {
     const created = await prisma.inventoryLocation.create({
       data: { name, description }
@@ -128,7 +128,7 @@ inventoryRouter.get('/inventory/items', async (req, res) => {
 inventoryRouter.post('/inventory/items', requireInventoryRole, async (req, res) => {
   const { categoryId, code, name, unit, itemType, defaultSalePrice, defaultCostPrice, minStockLevel, description } = req.body;
   if (!categoryId || !code || !name || !unit || !itemType) {
-    return res.status(400).json({ message: 'Thiáº¿u thÃ´ng tin máº·t hÃ ng báº¯t buá»™c' });
+    return res.status(400).json({ message: 'Thiếu thông tin mặt hàng bắt buộc' });
   }
 
   try {
@@ -152,7 +152,7 @@ inventoryRouter.post('/inventory/items', requireInventoryRole, async (req, res) 
       data: {
         itemId: created.id,
         sku: `${code}-DEFAULT`,
-        name: 'Máº·c Ä‘á»‹nh'
+        name: 'Mặc định'
       }
     });
 
@@ -163,7 +163,7 @@ inventoryRouter.post('/inventory/items', requireInventoryRole, async (req, res) 
 });
 
 // ==========================================
-// STOCKS (Sá»‘ lÆ°á»£ng tá»“n kho)
+// STOCKS (Số lượng tồn kho)
 // ==========================================
 inventoryRouter.get('/inventory/stocks', async (req, res) => {
   try {
@@ -181,7 +181,7 @@ inventoryRouter.get('/inventory/stocks', async (req, res) => {
 });
 
 // ==========================================
-// MOVEMENTS (Nháº­t kÃ½ nháº­p/xuáº¥t kho)
+// MOVEMENTS (Nhật ký nhập/xuất kho)
 // ==========================================
 inventoryRouter.get('/inventory/movements', async (req, res) => {
   try {
@@ -223,7 +223,7 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, async (req, r
   } = req.body;
 
   if (!movementType || !itemId || !quantity || !movementDate) {
-    return res.status(400).json({ message: 'Thiáº¿u thÃ´ng tin nháº­p xuáº¥t báº¯t buá»™c' });
+    return res.status(400).json({ message: 'Thiếu thông tin nhập xuất bắt buộc' });
   }
 
   const qty = Number(quantity);
@@ -271,7 +271,7 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, async (req, r
 
       const currentQty = stock?.quantityOnHand || 0;
       if (currentQty < qty) {
-        throw new Error(`INSUFFICIENT_STOCK|Sá»‘ lÆ°á»£ng tá»“n kho khÃ´ng Ä‘á»§ Ä‘á»ƒ xuáº¥t. (Hiá»‡n cÃ²n: ${currentQty} ${item.unit}, Cáº§n xuáº¥t: ${qty} ${item.unit})`);
+        throw new Error(`INSUFFICIENT_STOCK|Số lượng tồn kho không đủ để xuất. (Hiện còn: ${currentQty} ${item.unit}, Cần xuất: ${qty} ${item.unit})`);
       }
     }
 
@@ -390,7 +390,7 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, async (req, r
     res.status(201).json(movement);
   } catch (error: any) {
     if (error.message === 'INVENTORY_ITEM_NOT_FOUND') {
-      return res.status(404).json({ message: 'KhÃ´ng tÃ¬m tháº¥y máº·t hÃ ng' });
+      return res.status(404).json({ message: 'Không tìm thấy mặt hàng' });
     }
     if (error.message === 'STUDENT_REQUIRED_FOR_INVENTORY_SALE') {
       return res.status(400).json({ message: 'Cần chọn học viên nhận hàng trước khi xuất bán vật tư' });
