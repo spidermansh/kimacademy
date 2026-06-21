@@ -1,6 +1,6 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
-
-type DbClient = PrismaClient | Prisma.TransactionClient;
+// Chấp nhận cả prisma client (đã extend) lẫn transaction client. Dùng kiểu lỏng
+// để không phụ thuộc kiểu nội bộ phức tạp của Prisma extension.
+type DbClient = any;
 
 export interface ExpectedLedger {
   totalPaid: number;

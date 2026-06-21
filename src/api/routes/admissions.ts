@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { generateUniqueCode } from '../utils/codes';
+import { monthRange } from '../utils/dates';
 
 export const admissionsRouter = Router();
 
@@ -350,7 +351,7 @@ admissionsRouter.get('/admission-summary', async (req, res) => {
 
   try {
     const leadsInMonth = await prisma.admissionLead.findMany({
-      where: { registrationDate: { startsWith: m as string } }
+      where: { registrationDate: monthRange(m as string) }
     });
 
     const total = leadsInMonth.length;

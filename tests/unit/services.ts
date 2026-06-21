@@ -1,5 +1,6 @@
 import { prisma } from '../../src/infrastructure/db/prisma.client';
 import { getFeeAtDate, parseFeeHistory } from '../../src/shared/business/tuition';
+import { toDateStr } from '../../src/api/utils/dates';
 
 export class StudentService {
   static async createStudent(data: {
@@ -206,7 +207,7 @@ export class AttendanceService {
 
       const sessionsDeducted = (r.status === 'present' || r.status === 'absent') ? 1 : 0;
       const feeApplied = (r.status === 'present' || r.status === 'absent')
-        ? getFeeAtDate(session.date, enrollment.feePerSession, parseFeeHistory(enrollment.feeHistory))
+        ? getFeeAtDate(toDateStr(session.date) || '', enrollment.feePerSession, parseFeeHistory(enrollment.feeHistory))
         : 0;
 
       const att = await prisma.attendanceRecord.create({

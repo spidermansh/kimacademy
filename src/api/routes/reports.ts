@@ -3,6 +3,7 @@ import { prisma } from '../../infrastructure/db/prisma.client';
 import { REPORT_GROUPS, ReportParams } from '../../shared/business/reports';
 import { parseFeeHistory } from '../../shared/business/tuition';
 import { toArray, toObject, toJsonString } from '../../shared/json';
+import { toDateStr, toIso } from '../utils/dates';
 import { authenticateToken } from '../middleware/auth';
 
 export const reportsRouter = Router();
@@ -104,13 +105,13 @@ reportsRouter.post('/reports/run', async (req, res) => {
         englishName: s.englishName,
         vietAnhName: s.vietnameseName && s.englishName ? `${s.vietnameseName} (${s.englishName})` : s.vietnameseName || s.englishName || s.name,
         gender: s.gender || '',
-        birthYear: s.birthDate ? parseInt(s.birthDate.slice(0, 4)) : 0,
+        birthYear: s.birthDate ? parseInt((toDateStr(s.birthDate) || '').slice(0, 4)) : 0,
         parentPhone: primaryContact ? primaryContact.phone : '',
         className: activeEnroll?.class.name || '',
         feePerSession: activeEnroll ? activeEnroll.feePerSession : 0,
         feeHistory: activeEnroll ? parseFeeHistory(activeEnroll.feeHistory) : [],
         status: s.status as any,
-        enrollDate: s.enrollDate || '',
+        enrollDate: toDateStr(s.enrollDate) || '',
         createdAt: s.createdAt.toISOString(),
         updatedAt: s.updatedAt.toISOString(),
         notes: s.notes || ''
@@ -143,7 +144,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
       ...tuitionTxRaw.map(t => ({
         id: t.id,
         createdAt: t.createdAt.toISOString(),
-        paymentDate: t.paymentDate,
+        paymentDate: toDateStr(t.paymentDate) || '',
         studentId: t.studentId,
         studentName: students.find(s => s.id === t.studentId)?.name || 'Học viên',
         className: classesRaw.find(c => c.id === (enrollmentsRaw.find(e => e.id === t.enrollmentId)?.classId))?.name || '',
@@ -160,7 +161,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
       ...revenueOtherRaw.map(t => ({
         id: t.id,
         createdAt: t.createdAt.toISOString(),
-        paymentDate: t.paymentDate,
+        paymentDate: toDateStr(t.paymentDate) || '',
         studentId: t.studentId || '',
         studentName: students.find(s => s.id === t.studentId)?.name || 'Khách vãng lai',
         className: '',
@@ -184,7 +185,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
       classId: a.classId,
       className: a.class.name,
       enrollmentId: a.enrollmentId,
-      date: a.date,
+      date: toDateStr(a.date) || '',
       status: a.status as any,
       sessionsDeducted: a.sessionsDeducted,
       feeApplied: a.feeApplied,
@@ -196,7 +197,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
 
     const expenses = expensesRaw.map(e => ({
       id: e.id,
-      date: e.date,
+      date: toDateStr(e.date) || '',
       category: e.category,
       description: e.description,
       amount: e.amount,
@@ -219,7 +220,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
       otherMonthlyAllowanceNote: s.otherMonthlyAllowanceNote || '',
       bankAccount: s.bankAccount || '',
       bankName: s.bankName || '',
-      startDate: s.startDate,
+      startDate: toDateStr(s.startDate) || '',
       status: s.status as any,
       notes: s.notes || '',
       taxMethod: s.taxMethod as any,
@@ -241,7 +242,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
       staffName: l.staff.name,
       teacherId: l.staffId,
       teacherName: l.staff.name,
-      date: l.date,
+      date: toDateStr(l.date) || '',
       classId: l.classId,
       className: classMap.get(l.classId) || '',
       sessions: l.sessions,
@@ -259,7 +260,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
       teacherId: a.staffId,
       teacherName: a.staff.name,
       amount: a.amount,
-      date: a.date,
+      date: toDateStr(a.date) || '',
       reason: a.reason || '',
       approvedBy: a.approvedBy || '',
       createdAt: a.createdAt.toISOString()
@@ -303,9 +304,9 @@ reportsRouter.post('/reports/run', async (req, res) => {
 
     const dailyCloses = dailyClosesRaw.map(c => ({
       id: c.id,
-      date: c.date,
+      date: toDateStr(c.date) || '',
       status: c.status as any,
-      completedAt: c.completedAt,
+      completedAt: toIso(c.completedAt) || '',
       completedBy: c.completedBy,
       summary: toObject(c.summary),
       note: c.note || ''
@@ -330,8 +331,8 @@ reportsRouter.post('/reports/run', async (req, res) => {
       value: p.value,
       unit: p.unit || '',
       description: p.description || '',
-      effectiveFrom: p.effectiveFrom,
-      effectiveTo: p.effectiveTo || null,
+      effectiveFrom: toDateStr(p.effectiveFrom) || '',
+      effectiveTo: toDateStr(p.effectiveTo) || null,
       isActive: p.isActive,
       createdAt: p.createdAt.toISOString(),
       createdBy: p.createdBy,
@@ -345,8 +346,8 @@ reportsRouter.post('/reports/run', async (req, res) => {
       studentName: e.student.name,
       className: e.class.name,
       feePerSession: e.feePerSession,
-      startDate: e.startDate,
-      endDate: e.endDate || undefined,
+      startDate: toDateStr(e.startDate) || '',
+      endDate: toDateStr(e.endDate) || undefined,
       isActive: e.isActive,
       transferNote: e.transferNote || undefined,
       feeHistory: parseFeeHistory(e.feeHistory),

@@ -3,6 +3,7 @@ import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth';
 import { generateUniqueCode } from '../utils/codes';
 import { toArray } from '../../shared/json';
+import { monthRange, toDateStr } from '../utils/dates';
 
 export const payrollRouter = Router();
 
@@ -252,7 +253,7 @@ payrollRouter.get('/teaching-logs', async (req, res) => {
     const where: any = {};
     if (staffId) where.staffId = staffId as string;
     if (month) {
-      where.date = { startsWith: month as string };
+      where.date = monthRange(month as string);
     }
 
     const [list, allClasses] = await Promise.all([
@@ -340,7 +341,7 @@ payrollRouter.get('/salary-advances', async (req, res) => {
     const where: any = {};
     if (staffId) where.staffId = staffId as string;
     if (month) {
-      where.date = { startsWith: month as string };
+      where.date = monthRange(month as string);
     }
 
     const list = await prisma.salaryAdvance.findMany({
@@ -467,10 +468,10 @@ async function calculateStaffSalary(staffId: string, month: string, periodId: st
 
   // 2. Fetch teaching logs and advances
   const teachingLogs = await prisma.teachingLog.findMany({
-    where: { staffId, date: { startsWith: month } }
+    where: { staffId, date: monthRange(month) }
   });
   const advances = await prisma.salaryAdvance.findMany({
-    where: { staffId, date: { startsWith: month } }
+    where: { staffId, date: monthRange(month) }
   });
 
   const totalSessions = teachingLogs.reduce((sum, l) => sum + (l.sessions || 1), 0);
@@ -717,15 +718,15 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
     const [allStaff, teachingLogs, assistantLogs, advances, existingItems] = await Promise.all([
       prisma.staffMember.findMany(),
       prisma.teachingLog.findMany({
-        where: { date: { startsWith: month } },
+        where: { date: monthRange(month) },
         select: { staffId: true }
       }),
       prisma.assistantWorkLog.findMany({
-        where: { date: { startsWith: month } },
+        where: { date: monthRange(month) },
         select: { staffId: true }
       }),
       prisma.salaryAdvance.findMany({
-        where: { date: { startsWith: month } },
+        where: { date: monthRange(month) },
         select: { staffId: true }
       }),
       prisma.payrollItem.findMany({
@@ -743,7 +744,7 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
 
     const staff = allStaff.filter(s => {
       // Exclude if start date is after calculation month (YYYY-MM-DD vs YYYY-MM)
-      const startMonth = s.startDate.slice(0, 7);
+      const startMonth = (toDateStr(s.startDate) || '').slice(0, 7);
       if (startMonth > month) {
         return false;
       }

@@ -32,7 +32,7 @@ model StaffMember {
   otherMonthlyAllowanceNote   String?
   bankAccount                 String?
   bankName                    String?
-  startDate                   String
+  startDate                   DateTime @db.Date
   status                      String             @default("active")
   notes                       String?
   taxMethod                   String             @default("fixed_percent")
@@ -87,9 +87,9 @@ model Student {
   vietnameseName    String
   englishName       String
   gender            String?
-  birthDate         String?             // YYYY-MM-DD
+  birthDate         DateTime? @db.Date // YYYY-MM-DD
   status            String              @default("active") // active | waiting_class | suspended | left | trial
-  enrollDate        String?             // YYYY-MM-DD
+  enrollDate        DateTime? @db.Date // YYYY-MM-DD
   notes             String?
   admissionLeadId   String?
   createdAt         DateTime            @default(now())
@@ -128,8 +128,8 @@ model Enrollment {
   classId           String
   class             Class              @relation(fields: [classId], references: [id])
   feePerSession     Float
-  startDate         String             // YYYY-MM-DD
-  endDate           String?            // YYYY-MM-DD
+  startDate         DateTime @db.Date // YYYY-MM-DD
+  endDate           DateTime? @db.Date // YYYY-MM-DD
   isActive          Boolean            @default(true)
   transferNote      String?
   feeHistory        Json               @default("[]") // JSON array (jsonb)
@@ -146,7 +146,7 @@ model Session {
   id                     String             @id @default(uuid())
   classId                String
   class                  Class              @relation(fields: [classId], references: [id])
-  date                   String             // YYYY-MM-DD
+  date                   DateTime @db.Date // YYYY-MM-DD
   teacherId              String
   teacher                StaffMember        @relation("TaughtSessions", fields: [teacherId], references: [id])
   isSubstitute           Boolean            @default(false)
@@ -173,7 +173,7 @@ model AttendanceRecord {
   class            Class       @relation(fields: [classId], references: [id])
   enrollmentId     String
   enrollment       Enrollment  @relation(fields: [enrollmentId], references: [id])
-  date             String      // YYYY-MM-DD
+  date             DateTime @db.Date // YYYY-MM-DD
   status           String      // present | absent | excused
   sessionsDeducted Int         // 1 or 0
   feeApplied       Float       // Phí thực tế snapshot
@@ -194,7 +194,7 @@ model TuitionTransaction {
   student       Student  @relation(fields: [studentId], references: [id])
   enrollmentId  String?
   amount        Float
-  paymentDate   String   // YYYY-MM-DD
+  paymentDate   DateTime @db.Date // YYYY-MM-DD
   paymentMethod String
   term          String?  // Kỳ thu (e.g. "Tháng 6/2026")
   notes         String?
@@ -215,7 +215,7 @@ model RevenueOther {
   id            String             @id @default(uuid())
   category      String             // Sách | Đồng phục | Phí thi | Khác
   amount        Float
-  paymentDate   String             // YYYY-MM-DD
+  paymentDate   DateTime @db.Date // YYYY-MM-DD
   paymentMethod String
   studentId     String?
   student       Student?           @relation(fields: [studentId], references: [id])
@@ -248,7 +248,7 @@ model AdmissionLead {
   id                 String    @id @default(uuid())
   leadCode           String?
   studentName        String
-  dateOfBirth        String?
+  dateOfBirth        DateTime? @db.Date
   address            String?
   parentName         String?
   parentPhone        String
@@ -257,13 +257,13 @@ model AdmissionLead {
   learningNeed       String?
   consultationNote   String?
   assignedCounselor  String?
-  registrationDate   String
+  registrationDate   DateTime @db.Date
   status             String    @default("new")
-  testScheduleDate   String?
+  testScheduleDate   DateTime? @db.Date
   testScheduleTime   String?
   testAssignee       String?
   testScheduleNote   String?
-  testDate           String?
+  testDate           DateTime? @db.Date
   testType           String?
   testScore          Float?
   suggestedLevel     String?
@@ -272,7 +272,7 @@ model AdmissionLead {
   rejectionReason    String?
   convertedStudentId String?
   assignedClassId    String?
-  convertedAt        String?
+  convertedAt        DateTime?
   convertedBy        String?
   createdAt          DateTime  @default(now())
   createdBy          String?
@@ -285,7 +285,7 @@ model TeachingLog {
   id                String       @id @default(uuid())
   staffId           String
   staff             StaffMember  @relation(fields: [staffId], references: [id])
-  date              String       // YYYY-MM-DD
+  date              DateTime @db.Date // YYYY-MM-DD
   classId           String
   sessionId         String?
   sessions          Int          @default(1)
@@ -302,7 +302,7 @@ model AssistantWorkLog {
   id          String      @id @default(uuid())
   staffId     String
   staff       StaffMember @relation(fields: [staffId], references: [id])
-  date        String      // YYYY-MM-DD
+  date        DateTime @db.Date // YYYY-MM-DD
   hoursWorked Float
   hourlyRate  Float
   totalAmount Float
@@ -317,7 +317,7 @@ model SalaryAdvance {
   staffId    String
   staff      StaffMember @relation(fields: [staffId], references: [id])
   amount     Float
-  date       String      // YYYY-MM-DD
+  date       DateTime @db.Date // YYYY-MM-DD
   reason     String?
   approvedBy String?
   createdAt  DateTime    @default(now())
@@ -327,8 +327,8 @@ model SalaryAdvance {
 model PayrollPeriod {
   id           String        @id @default(uuid())
   month        String        // YYYY-MM
-  startDate    String        // YYYY-MM-DD
-  endDate      String        // YYYY-MM-DD
+  startDate    DateTime @db.Date // YYYY-MM-DD
+  endDate      DateTime @db.Date // YYYY-MM-DD
   status       String        @default("draft") // draft | approved | paid
   note         String?
   createdAt    DateTime      @default(now())
@@ -372,7 +372,7 @@ model PayrollItem {
 // 18. Expense - Chi phí vận hành
 model Expense {
   id                 String             @id @default(uuid())
-  date               String             // YYYY-MM-DD
+  date               DateTime @db.Date // YYYY-MM-DD
   category           String             // Tiền mặt | Chuyển khoản | ...
   description        String
   amount             Float
@@ -392,9 +392,9 @@ model Expense {
 // 19. DailyClose - Chốt ca thu chi cuối ngày
 model DailyClose {
   id          String   @id @default(uuid())
-  date        String   // YYYY-MM-DD
+  date        DateTime @db.Date // YYYY-MM-DD
   status      String   @default("completed") // completed
-  completedAt String
+  completedAt DateTime
   completedBy String
   summary     Json     // JSON object (jsonb)
   note        String?
@@ -425,8 +425,8 @@ model SystemParameter {
   value         String
   unit          String?
   description   String?
-  effectiveFrom String
-  effectiveTo   String?
+  effectiveFrom DateTime @db.Date
+  effectiveTo   DateTime? @db.Date
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   createdBy     String
@@ -591,11 +591,11 @@ model InventoryMovement {
   saleBatch             InventorySaleBatch? @relation(fields: [saleBatchId], references: [id])
   paymentStatus         String             @default("not_applicable") // not_applicable | unpaid | paid
   paymentMethod         String?
-  paymentDate           String?
+  paymentDate           DateTime? @db.Date
   paidAt                DateTime?
   collectedBy           String?
   note                  String?
-  movementDate          String             // YYYY-MM-DD
+  movementDate          DateTime @db.Date // YYYY-MM-DD
   createdAt             DateTime           @default(now())
   createdBy             String
 
@@ -615,10 +615,10 @@ model InventorySaleBatch {
   itemId         String
   variantId      String?
   fromLocationId String?
-  movementDate   String
+  movementDate   DateTime @db.Date
   paymentStatus  String              @default("unpaid")
   paymentMethod  String?
-  paymentDate    String?
+  paymentDate    DateTime? @db.Date
   totalStudents  Int                 @default(0)
   totalQuantity  Float               @default(0.0)
   totalAmount    Float               @default(0.0)

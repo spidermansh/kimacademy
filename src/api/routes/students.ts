@@ -3,6 +3,7 @@ import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { generateUniqueCode } from '../utils/codes';
 import { parseFeeHistory } from '../../shared/business/tuition';
+import { toDateStr } from '../utils/dates';
 
 export const studentsRouter = Router();
 
@@ -35,7 +36,7 @@ studentsRouter.get('/students', async (req, res) => {
         englishName: s.englishName,
         vietAnhName: `${s.vietnameseName} (${s.englishName})`,
         gender: s.gender,
-        birthYear: s.birthDate ? parseInt(s.birthDate.slice(0, 4)) : null,
+        birthYear: s.birthDate ? parseInt((toDateStr(s.birthDate) || '').slice(0, 4)) : null,
         parentPhone: primaryContact ? primaryContact.phone : '',
         className: activeEnrollment?.class?.name || '',
         feePerSession: activeEnrollment ? activeEnrollment.feePerSession : 0,
