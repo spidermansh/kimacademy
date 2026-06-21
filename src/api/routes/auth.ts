@@ -20,7 +20,7 @@ authRouter.post('/login', async (req, res) => {
       where: { username: username.toLowerCase() }
     });
 
-    if (!user || !bcryptjs.compareSync(password, user.password)) {
+    if (!user || !(await bcryptjs.compare(password, user.password))) {
       return res.status(401).json({ message: 'Tên đăng nhập hoặc mật khẩu không chính xác' });
     }
 

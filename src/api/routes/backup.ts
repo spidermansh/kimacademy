@@ -125,13 +125,44 @@ backupRouter.get('/backup', requireAdmin, async (req, res) => {
   }
 });
 
+// Các khóa dữ liệu mà restore biết xử lý (đồng bộ với hàm GET /backup).
+const KNOWN_BACKUP_KEYS = new Set([
+  'staffMembers', 'staffMember', 'classes', 'class', 'students', 'student',
+  'guardianContacts', 'enrollments', 'enrollment', 'expenses', 'revenueOthers',
+  'tuitionTransactions', 'tuitionLedgerEntries', 'sessions', 'attendanceRecords',
+  'teachingLogs', 'assistantWorkLogs', 'salaryAdvances', 'payrollPeriods',
+  'payrollItems', 'admissionLeads', 'dailyCloses', 'systemParameters',
+  'featureFlags', 'notifications', 'suppliers', 'inventoryLocations',
+  'inventoryCategories', 'inventoryItems', 'inventoryVariants', 'inventoryStocks',
+  'inventorySaleBatches', 'inventoryMovements',
+]);
+
 backupRouter.post('/restore', requireAdmin, async (req, res) => {
   const backupData = req.body;
   if (!backupData || !backupData.data || typeof backupData.data !== 'object') {
     return res.status(400).json({ message: 'Restore payload is empty or invalid' });
   }
 
+  // Chỉ chấp nhận bản sao lưu cùng dòng phiên bản v3 để tránh nạp sai schema.
+  const version = String(backupData.version || '');
+  if (!version.startsWith('3.')) {
+    return res.status(400).json({
+      message: `Bản sao lưu phiên bản "${version || 'không rõ'}" không tương thích (yêu cầu v3.x).`,
+    });
+  }
+
   const payload = backupData.data;
+
+  // Phát hiện bảng lạ: nếu backup chứa khóa mà restore không xử lý, dữ liệu sẽ bị
+  // mất thầm lặng — chặn lại để buộc cập nhật danh sách thay vì âm thầm bỏ qua.
+  const unknownKeys = Object.keys(payload).filter(
+    (k) => Array.isArray(payload[k]) && !KNOWN_BACKUP_KEYS.has(k)
+  );
+  if (unknownKeys.length > 0) {
+    return res.status(400).json({
+      message: `Bản sao lưu chứa dữ liệu chưa được hỗ trợ phục hồi: ${unknownKeys.join(', ')}. Vui lòng cập nhật phiên bản phục hồi.`,
+    });
+  }
 
   try {
     await prisma.$transaction(async (tx) => {

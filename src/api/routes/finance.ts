@@ -2,6 +2,8 @@
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth';
 import { isTuitionRevenue, REVENUE_CATEGORY_TUITION_OFFLINE } from '../../shared/constants';
+import { validateBody } from '../utils/validate';
+import { createTransactionSchema, createExpenseSchema } from '../schemas';
 
 export const financeRouter = Router();
 
@@ -98,11 +100,8 @@ financeRouter.get('/transactions', async (req, res) => {
 });
 
 // POST create transaction
-financeRouter.post('/transactions', requireFinanceRole, async (req, res) => {
+financeRouter.post('/transactions', requireFinanceRole, validateBody(createTransactionSchema), async (req, res) => {
   const data = req.body;
-  if (!data.amount || !data.paymentDate || !data.paymentMethod) {
-    return res.status(400).json({ message: 'Thiếu thông tin giao dịch bắt buộc' });
-  }
 
   const isTuition = isTuitionRevenue(data.revenueCategory);
   // Validate trước khi mở transaction để tránh gửi response 2 lần (header đã gửi).
@@ -356,11 +355,8 @@ financeRouter.get('/expenses', async (req, res) => {
 });
 
 // POST create expense
-financeRouter.post('/expenses', requireFinanceRole, async (req, res) => {
+financeRouter.post('/expenses', requireFinanceRole, validateBody(createExpenseSchema), async (req, res) => {
   const data = req.body;
-  if (!data.amount || !data.date || !data.description || !data.paymentMethod) {
-    return res.status(400).json({ message: 'Thiếu thông tin chi phí bắt buộc' });
-  }
 
   try {
     const created = await prisma.expense.create({

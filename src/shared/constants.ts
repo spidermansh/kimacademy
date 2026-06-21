@@ -10,3 +10,14 @@ export const REVENUE_CATEGORY_TUITION_OFFLINE = 'Học phí offline';
 export function isTuitionRevenue(category: string | undefined | null): boolean {
   return category === REVENUE_CATEGORY_TUITION_OFFLINE;
 }
+
+/**
+ * Phương thức của giao dịch chuyển số dư nội bộ khi học viên chuyển lớp.
+ * Đây KHÔNG phải doanh thu thực — phải loại khỏi mọi phép tính tổng thu.
+ */
+export const PAYMENT_METHOD_BALANCE_TRANSFER = 'Chuyển số dư';
+
+/** Giao dịch chuyển số dư nội bộ (không tính vào doanh thu). */
+export function isInternalTransfer(paymentMethod: string | undefined | null): boolean {
+  return paymentMethod === PAYMENT_METHOD_BALANCE_TRANSFER;
+}

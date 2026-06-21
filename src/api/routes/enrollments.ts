@@ -1,6 +1,9 @@
 ﻿import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { PAYMENT_METHOD_BALANCE_TRANSFER } from '../../shared/constants';
+import { validateBody } from '../utils/validate';
+import { createEnrollmentSchema } from '../schemas';
 
 export const enrollmentsRouter = Router();
 
@@ -62,11 +65,8 @@ enrollmentsRouter.get('/enrollments', async (req, res) => {
 });
 
 // POST create enrollment
-enrollmentsRouter.post('/enrollments', requireAcademicRole, async (req, res) => {
+enrollmentsRouter.post('/enrollments', requireAcademicRole, validateBody(createEnrollmentSchema), async (req, res) => {
   const data = req.body;
-  if (!data.studentId || !data.classId || !data.feePerSession) {
-    return res.status(400).json({ message: 'Thiếu thông tin đăng ký' });
-  }
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -193,8 +193,9 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
       }
     });
 
-    // Carry over balance
-    if (oldBalance > 0 && oldEnrollmentId) {
+    // Carry over balance — mang theo cả số dư dương (còn tiền) lẫn âm (đang nợ),
+    // để công nợ của học viên không bị bỏ lại trên enrollment đã đóng.
+    if (oldBalance !== 0 && oldEnrollmentId) {
       // Deduct from old enrollment
       await tx.tuitionTransaction.create({
         data: {
@@ -202,7 +203,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
           enrollmentId: oldEnrollmentId,
           amount: -oldBalance,
           paymentDate: transferDate,
-          paymentMethod: 'Chuyển số dư',
+          paymentMethod: PAYMENT_METHOD_BALANCE_TRANSFER,
           notes: `Chuyển số dư sang lớp ${newClassName}`,
           createdBy: req.user?.name || req.user?.username || 'unknown'
         }
@@ -232,7 +233,7 @@ enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req,
           enrollmentId: newEnroll.id,
           amount: oldBalance,
           paymentDate: transferDate,
-          paymentMethod: 'Chuyển số dư',
+          paymentMethod: PAYMENT_METHOD_BALANCE_TRANSFER,
           notes: `Nhận số dư chuyển từ lớp ${oldClassName}`,
           createdBy: req.user?.name || req.user?.username || 'unknown'
         }

@@ -706,11 +706,14 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
     // 1. Find or create payroll period
     let period = await prisma.payrollPeriod.findFirst({ where: { month } });
     if (!period) {
+      // Ngày cuối tháng thực tế (28/29/30/31) thay vì cứng "-31".
+      const [y, m] = month.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
       period = await prisma.payrollPeriod.create({
         data: {
           month,
           startDate: `${month}-01`,
-          endDate: `${month}-31`, // Simple representation
+          endDate: `${month}-${String(lastDay).padStart(2, '0')}`,
           status: 'draft',
           createdBy: req.user?.name || req.user?.username || 'unknown'
         }
