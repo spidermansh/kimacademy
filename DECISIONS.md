@@ -62,7 +62,8 @@
   - `unpaid + issued=true` (Đã phát – chưa thu): trừ kho ngay, không doanh thu (thu sau qua `/collect-payment`).
   - `paid + issued=false` (**Đã thu – chưa phát**): **KHÔNG trừ kho, KHÔNG kiểm tra tồn lúc tạo**, ghi doanh thu ngay. Trừ kho + kiểm tra tồn khi gọi `POST /inventory/movements/:id/deliver`.
 - **Lý do:** Tách "thu tiền" khỏi "phát hàng" — cho phép thu trước khi có hàng (hết tồn).
-- **File:** `src/api/routes/inventory.ts` (create + endpoint `/deliver`); `src/ui/pages/InventoryManagement.tsx`.
+- **File:** `src/api/routes/inventory.ts` (create đơn lẻ **+ bulk `/movements/bulk`** + endpoint `/deliver`); `src/ui/pages/InventoryManagement.tsx`.
+- **Áp dụng cả bán hàng loạt** (`8141b99`): bulk cũng nhận `issued`; khi `issued=false` không trừ kho/không kiểm tồn lúc tạo, trừ kho khi `/deliver` từng dòng.
 - **Cấm:** Trừ kho cho movement `issued=false`; chặn tạo "đã thu–chưa phát" vì hết tồn (chỉ chặn lúc `/deliver`).
 
 ## D10. KHÔNG gỡ shim FE load-bearing trong response lương
