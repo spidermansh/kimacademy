@@ -26,6 +26,7 @@
 | Fix | `3a1181e` | Migration `json_columns`/`date_columns` đổi DROP+recreate → `ALTER ... USING` (bảo toàn dữ liệu). Nghiệm chứng reset + diff = No difference. D12 resolved. |
 | Fix | `ac09b0a` | Rà soát báo cáo P1: Tài chính P&L truyền `enrollments`; "vắng nhiều" bỏ excused; "chờ xếp lớp" loại HV nghỉ; cờ cột `noTotal` (bỏ tổng %/lũy kế). |
 | Refactor | `e7ef5b1` | Rà soát báo cáo P2: literal phân loại → hằng số (D2/D3); `tuition_payment_history` loại "Chuyển số dư"; ghi chú lương gross/net; Export Excel ghi bộ lọc kho + người xuất. |
+| Feat | `4be6b2d` | Giao việc thủ công: bảng `AssignedTask` (thuần thêm), API `/api/tasks`, panel ở Bàn làm việc, nhóm báo cáo `grp_tasks`, tab Sidebar (D14). |
 | Feat | `438e67f` | UI: component `SearchableSelect` (ô chọn HV có tìm kiếm) thay 2 select phẳng (Kho bán đơn lẻ, Báo cáo lọc HV). Giữ nguyên TransactionTable (datalist) + QuickPaymentModal (đã có search). |
 | Feat | `8141b99` | Kho: bán hàng loạt hỗ trợ "Đã thu – chưa phát" (`issued=false`) — đồng bộ bán đơn lẻ (D9); không trừ kho lúc tạo, trừ khi `/deliver`. |
 | Feat | `29aa300` | Rà soát báo cáo P3+P3-bis: gộp sắp/hết buổi; thêm Sinh nhật + Học thử; phân biệt 2 BC "chờ xếp lớp"; tab đếm số + spinner kho. Tách "Tài chính tháng" → Dòng tiền (net) + Doanh thu thực (gross, D13); thêm earned theo lớp/ngày. 72 test. |

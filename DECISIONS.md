@@ -93,3 +93,9 @@
 - **Lý do:** Bảng gộp cash+earned khó đọc và lẫn cơ sở lương (net/gross) gây lệch số giữa các báo cáo. Chủ dự án chốt earned-profit dùng gross (chuẩn kế toán accrual).
 - **File:** `src/shared/business/reports.ts` (nhóm `grp_overview`).
 - **Cấm:** Trộn lại cash & earned trong một báo cáo; dùng net cho "lợi nhuận thực" (earned). Báo cáo dòng tiền giữ net.
+
+## D14. Giao việc thủ công (AssignedTask)
+- **Quyết định:** Bảng `AssignedTask` (title/content/`dueDate @db.Date`/priority/status). Trạng thái `pending | in_progress | done`; "quá hạn" SUY RA (dueDate < hôm nay & status ≠ done), không lưu cột riêng. **Phân quyền:** admin giao cho bất kỳ user (kể cả mình); nhân viên CHỈ tự tạo việc cho mình + đổi trạng thái/báo cáo hoàn thành việc của mình. `assignedByUserId`/`assigneeUserId` là id mềm (không FK cứng — D8).
+- **Lý do:** Bổ sung giao việc tay song song "việc cần làm" tự sinh ở Bàn làm việc, theo yêu cầu chủ dự án.
+- **File:** `prisma/schema.prisma` (+ `dueDate` vào `DATE_ONLY_FIELDS` — D5); `src/api/routes/tasks.ts`; `src/ui/components/TaskAssignmentPanel.tsx` (panel ở TodayWorkspace); `src/shared/business/reports.ts` (nhóm `grp_tasks`).
+- **Cấm:** Cho nhân viên giao việc cho người khác; bỏ kiểm tra quyền (admin vs assignee) trong route.
