@@ -7,7 +7,7 @@
 |---|---|---|
 | Typecheck | `npx tsc --noEmit` (= `npm run lint`) | ✅ **PASS** (0 lỗi, exit 0) |
 | Unit/Integration tests | `npm test` | ✅ **71/71 PASS** (9 test files) |
-| Build | `npm run build` | ✅ **PASS** (`dist/server.js` ~345.5kb) |
+| Build | `npm run build` | ✅ **PASS** (`dist/server.js` ~354.4kb sau GĐ C) |
 
 → Toàn bộ xanh. Không có test fail tại thời điểm bàn giao.
 
@@ -36,7 +36,7 @@ npm run build                              # build
 
 ## Test chưa chạy / chưa có
 - **Không có test cho luồng "Đã thu – chưa phát" + `/deliver`** của kho (đã kiểm chứng thủ công qua API trong phiên, chưa viết unit test). → Đề xuất bổ sung khi làm tiếp.
-- **Không có test riêng cho 7 báo cáo kho** mới (đã kiểm chứng compute thủ công trên dữ liệu demo trong phiên, chưa cố định bằng test).
+- **Không có test riêng cho 11 báo cáo kho** (7 GĐ A+B + 4 GĐ C). Đã kiểm chứng compute thủ công: GĐ C (`inv_kardex`, `inv_incomplete`, `inv_sales_by_class`, `inv_by_staff`) nghiệm chứng qua script tạm + kịch bản synthetic phủ mọi nhánh `issued`/`paymentStatus` + map lớp (commit `989627c`). Chưa cố định bằng unit test. → Đề xuất bổ sung (mở rộng `buildReportParams` để nạp shape kho).
 - Không có test E2E/UI tự động (UI kiểm tra thủ công qua dev server).
 
 ## Lưu ý QUAN TRỌNG về môi trường test

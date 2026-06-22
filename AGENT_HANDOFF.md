@@ -28,6 +28,7 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 ## 5. Đã hoàn thành trong phiên hiện tại (theo commit, mới → cũ)
 | Commit | Nội dung |
 |---|---|
+| `989627c` | **Báo cáo kho — GĐ C** (4 báo cáo): Thẻ kho Kardex theo mặt hàng · GD chưa hoàn tất · Bán theo lớp · Theo người thực hiện. Thêm control filter `invItem`. |
 | `f64ff41` | **Báo cáo kho vật tư** (nhóm `grp_inventory`, 7 báo cáo) — GĐ A (hạ tầng) + B (báo cáo cốt lõi) |
 | `d14bb6b` | **Kho: trạng thái "Đã thu – chưa phát" (nợ hàng)** + filter/Excel cho Nhật ký xuất nhập |
 | `86dc636` | Fix: dòng giao dịch thiếu tên HV/lớp sau khi thu tiền (FE refetch + resolve lớp theo enrollment GD) |
@@ -44,8 +45,8 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 | `e2be306` | (WIP checkpoint baseline — gồm phần kho nhập dở trước khi audit) |
 
 ## 6. Đang làm dở / chưa xong
-- **Báo cáo kho — GĐ C** (chưa làm): Thẻ kho Kardex theo mặt hàng · GD chưa hoàn tất · Theo lớp · Theo người thực hiện.
-- **Báo cáo kho — GĐ D** (chưa làm): cần thêm `supplierId` vào `InventoryMovement` (purchase_in) trước → rồi mới làm báo cáo "theo nhà cung cấp".
+- **Báo cáo kho — GĐ C** (✅ XONG, commit `989627c`): 4 báo cáo Kardex/GD chưa hoàn tất/bán theo lớp/theo người thực hiện. Nhóm `grp_inventory` nay có 11 báo cáo.
+- **Báo cáo kho — GĐ D** (chưa làm — TASK KẾ TIẾP): cần thêm `supplierId` vào `InventoryMovement` (purchase_in) trước → rồi mới làm báo cáo "theo nhà cung cấp".
 - **Chưa merge `fix/audit` → `main`** (chờ quyết định; xem cảnh báo migration ở mục 10).
 - Không có code dở dang chưa commit (working tree sạch).
 
@@ -61,7 +62,7 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 - `src/api/jobs/ledger-reconcile.job.ts` — cron đối soát sổ cái hằng ngày.
 - `src/api/routes/*.ts` — finance, attendance, enrollments, payroll, inventory, ledger (mới), auth, users, admissions, settings, reports.
 - `src/api/middleware/auth.ts` — kiểm tra `tokenVersion` (async).
-- `src/shared/business/reports.ts` — engine + nhóm `grp_inventory` (7 báo cáo).
+- `src/shared/business/reports.ts` — engine + nhóm `grp_inventory` (11 báo cáo: 7 GĐ A+B, 4 GĐ C). Filter `invItem` mới.
 - `src/ui/pages/ReportsDashboard.tsx`, `InventoryManagement.tsx`, `src/ui/layouts/Sidebar.tsx`, `src/App.tsx`.
 - `scripts/fix-mojibake.mjs`, `scripts/migrate-date-columns.mjs`, `scripts/truncate-all.ts` — script một lần (tham khảo).
 

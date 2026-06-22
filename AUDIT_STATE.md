@@ -21,12 +21,12 @@
 | Fix | `86dc636` | Giao dịch hiện tên HV/lớp ngay (FE refetch; BE resolve lớp theo enrollment của giao dịch, không chỉ active). |
 | Feat | `d14bb6b` | Kho: `InventoryMovement.issued/deliveredAt`; trạng thái "Đã thu – chưa phát"; endpoint `/deliver`; filter + Excel cho nhật ký. |
 | Feat | `f64ff41` | Báo cáo kho: nhóm `grp_inventory` 7 báo cáo (GĐ A hạ tầng + B cốt lõi). |
+| Feat | `989627c` | Báo cáo kho GĐ C: 4 báo cáo (Kardex theo mặt hàng, GD chưa hoàn tất, bán theo lớp, theo người thực hiện) + filter `invItem`. Compute thuần, không đổi schema. |
 
 ## Phase đang làm
 - (Không có phase code nào đang dở — working tree sạch.) Đang ở bước **bàn giao tài liệu**.
 
 ## Phase chưa làm
-- **Báo cáo kho GĐ C**: Thẻ kho (Kardex) theo mặt hàng · GD chưa hoàn tất · Theo lớp · Theo người thực hiện.
 - **Báo cáo kho GĐ D**: thêm `supplierId` vào `InventoryMovement` (purchase_in) + UI chọn NCC → báo cáo theo nhà cung cấp.
 - **Data-model migration cho PRODUCTION**: viết lại migration đổi kiểu (json/date) thành bảo toàn dữ liệu (hiện đang DROP+recreate — chỉ an toàn với DB rỗng/test).
 - **Merge `fix/audit` → `main`** (PR).
@@ -37,7 +37,7 @@
 | Schema / Database | 🟢 Ổn (test) / 🟠 prod | jsonb + DateTime + tokenVersion + createdById + AuditLog.userId + inventory.issued. 10 migration. ⚠️ migration đổi kiểu DESTRUCTIVE trên prod có dữ liệu. |
 | Ledger (sổ cái) | 🟢 Tốt | 1 nguồn sự thật `recalcEnrollmentLedger`; có endpoint + cron đối soát; test `ledger.test.ts` pass. |
 | Inventory (kho) | 🟢 Tốt | Chặn tồn âm, giá vốn BQ, trạng thái issued (đã thu–chưa phát), `/deliver`, filter+Excel. `inventory.test.ts` (18) pass. |
-| Reports (báo cáo) | 🟡 Một phần | Nhóm kho GĐ A+B (7 báo cáo) xong; GĐ C/D chưa. Tính client-side. `reports.test.ts` (12) pass. |
+| Reports (báo cáo) | 🟡 Một phần | Nhóm kho GĐ A+B+C (11 báo cáo) xong; GĐ D chưa. Tính client-side. `reports.test.ts` (12) pass; 4 báo cáo GĐ C nghiệm chứng compute (chưa có unit test riêng). |
 | Services / Business | 🟢 Tốt | ledger, dates, json, constants, validate, audit, reports engine. |
 | UI (frontend) | 🟢 Tốt | Reports, Inventory, Sidebar, App cập nhật; HMR. Hợp đồng ngày = chuỗi giữ nguyên. |
 | Tests | 🟢 71/71 pass | 9 file (xem TEST_STATUS.md). DB tests cần PostgreSQL + truncate. |
@@ -45,7 +45,7 @@
 
 ## Rủi ro còn lại
 1. **Migration đổi kiểu DROP+recreate** → mất dữ liệu nếu deploy lên prod có dữ liệu thật (rủi ro cao nhất).
-2. Báo cáo kho chưa đầy đủ (thiếu Kardex, theo NCC, theo lớp/người thực hiện).
+2. Báo cáo kho chưa đầy đủ (GĐ D — theo nhà cung cấp — cần thêm `supplierId`).
 3. `authenticateToken` +1 truy vấn DB/request (perf — chấp nhận được).
 4. zod chưa phủ 100% route.
 5. README chưa cập nhật (low).
