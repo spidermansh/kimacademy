@@ -1,52 +1,56 @@
-/*
-  Warnings:
+-- ⚠️ SỬA TAY (DECISIONS D12): chuyển cột TEXT chứa JSON-string -> JSONB GIỮ NGUYÊN DỮ LIỆU.
+-- Dùng `ALTER COLUMN ... SET DATA TYPE jsonb USING ...` thay cho DROP+ADD (vốn mất dữ liệu).
+-- An toàn khi `migrate deploy` lên DB ĐÃ CÓ DỮ LIỆU (không chỉ DB rỗng/test).
+-- Quy ước USING:
+--   * NULLIF(col,'')        : chuỗi rỗng -> NULL (cột nullable).
+--   * COALESCE(...,default) : đảm bảo non-null cho cột NOT NULL nếu gặp '' / NULL.
+-- Trên DB rỗng (CI/seed) các mệnh đề USING là vô hại (không có dòng nào để ép kiểu).
 
-  - The `oldValue` column on the `AuditLog` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - The `newValue` column on the `AuditLog` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - The `scheduleDays` column on the `Class` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - The `feeHistory` column on the `Enrollment` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - The `enabledForRoles` column on the `FeatureFlag` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - The `errorLog` column on the `ImportBatch` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - The `attributes` column on the `InventoryVariant` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - The `salaryHistory` column on the `StaffMember` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - The `editHistory` column on the `TuitionTransaction` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-  - Changed the type of `summary` on the `DailyClose` table. No cast exists, the column would be dropped and recreated, which cannot be done if there is data, since the column is required.
+-- AuditLog.oldValue / newValue (nullable)
+ALTER TABLE "AuditLog"
+  ALTER COLUMN "oldValue" SET DATA TYPE JSONB USING NULLIF("oldValue", '')::jsonb,
+  ALTER COLUMN "newValue" SET DATA TYPE JSONB USING NULLIF("newValue", '')::jsonb;
 
-*/
--- AlterTable
-ALTER TABLE "AuditLog" DROP COLUMN "oldValue",
-ADD COLUMN     "oldValue" JSONB,
-DROP COLUMN "newValue",
-ADD COLUMN     "newValue" JSONB;
+-- Class.scheduleDays (NOT NULL DEFAULT '[]')
+ALTER TABLE "Class"
+  ALTER COLUMN "scheduleDays" DROP DEFAULT,
+  ALTER COLUMN "scheduleDays" SET DATA TYPE JSONB USING COALESCE(NULLIF("scheduleDays", '')::jsonb, '[]'::jsonb),
+  ALTER COLUMN "scheduleDays" SET DEFAULT '[]';
 
--- AlterTable
-ALTER TABLE "Class" DROP COLUMN "scheduleDays",
-ADD COLUMN     "scheduleDays" JSONB NOT NULL DEFAULT '[]';
+-- DailyClose.summary (NOT NULL, không default)
+ALTER TABLE "DailyClose"
+  ALTER COLUMN "summary" SET DATA TYPE JSONB USING COALESCE(NULLIF("summary", '')::jsonb, '{}'::jsonb);
 
--- AlterTable
-ALTER TABLE "DailyClose" DROP COLUMN "summary",
-ADD COLUMN     "summary" JSONB NOT NULL;
+-- Enrollment.feeHistory (NOT NULL DEFAULT '[]')
+ALTER TABLE "Enrollment"
+  ALTER COLUMN "feeHistory" DROP DEFAULT,
+  ALTER COLUMN "feeHistory" SET DATA TYPE JSONB USING COALESCE(NULLIF("feeHistory", '')::jsonb, '[]'::jsonb),
+  ALTER COLUMN "feeHistory" SET DEFAULT '[]';
 
--- AlterTable
-ALTER TABLE "Enrollment" DROP COLUMN "feeHistory",
-ADD COLUMN     "feeHistory" JSONB NOT NULL DEFAULT '[]';
+-- FeatureFlag.enabledForRoles (NOT NULL DEFAULT '[]')
+ALTER TABLE "FeatureFlag"
+  ALTER COLUMN "enabledForRoles" DROP DEFAULT,
+  ALTER COLUMN "enabledForRoles" SET DATA TYPE JSONB USING COALESCE(NULLIF("enabledForRoles", '')::jsonb, '[]'::jsonb),
+  ALTER COLUMN "enabledForRoles" SET DEFAULT '[]';
 
--- AlterTable
-ALTER TABLE "FeatureFlag" DROP COLUMN "enabledForRoles",
-ADD COLUMN     "enabledForRoles" JSONB NOT NULL DEFAULT '[]';
+-- ImportBatch.errorLog (nullable)
+ALTER TABLE "ImportBatch"
+  ALTER COLUMN "errorLog" SET DATA TYPE JSONB USING NULLIF("errorLog", '')::jsonb;
 
--- AlterTable
-ALTER TABLE "ImportBatch" DROP COLUMN "errorLog",
-ADD COLUMN     "errorLog" JSONB;
+-- InventoryVariant.attributes (NOT NULL DEFAULT '{}')
+ALTER TABLE "InventoryVariant"
+  ALTER COLUMN "attributes" DROP DEFAULT,
+  ALTER COLUMN "attributes" SET DATA TYPE JSONB USING COALESCE(NULLIF("attributes", '')::jsonb, '{}'::jsonb),
+  ALTER COLUMN "attributes" SET DEFAULT '{}';
 
--- AlterTable
-ALTER TABLE "InventoryVariant" DROP COLUMN "attributes",
-ADD COLUMN     "attributes" JSONB NOT NULL DEFAULT '{}';
+-- StaffMember.salaryHistory (NOT NULL DEFAULT '[]')
+ALTER TABLE "StaffMember"
+  ALTER COLUMN "salaryHistory" DROP DEFAULT,
+  ALTER COLUMN "salaryHistory" SET DATA TYPE JSONB USING COALESCE(NULLIF("salaryHistory", '')::jsonb, '[]'::jsonb),
+  ALTER COLUMN "salaryHistory" SET DEFAULT '[]';
 
--- AlterTable
-ALTER TABLE "StaffMember" DROP COLUMN "salaryHistory",
-ADD COLUMN     "salaryHistory" JSONB NOT NULL DEFAULT '[]';
-
--- AlterTable
-ALTER TABLE "TuitionTransaction" DROP COLUMN "editHistory",
-ADD COLUMN     "editHistory" JSONB NOT NULL DEFAULT '[]';
+-- TuitionTransaction.editHistory (NOT NULL DEFAULT '[]')
+ALTER TABLE "TuitionTransaction"
+  ALTER COLUMN "editHistory" DROP DEFAULT,
+  ALTER COLUMN "editHistory" SET DATA TYPE JSONB USING COALESCE(NULLIF("editHistory", '')::jsonb, '[]'::jsonb),
+  ALTER COLUMN "editHistory" SET DEFAULT '[]';
