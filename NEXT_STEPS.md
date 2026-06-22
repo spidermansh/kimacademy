@@ -75,6 +75,19 @@
 10. Thêm BC Học viên: "Sinh nhật học viên", "Học viên học thử (trial)".
 11. Giao diện: số lượng BC trên mỗi tab + spinner tải dữ liệu kho; (tuỳ chọn) bỏ 1 nút Excel, sửa ghi chú tài chính theo cờ.
 
+**⏳ P3-bis — Tổ chức lại nhóm TỔNG QUAN tài chính (chờ duyệt, theo yêu cầu chủ dự án):**
+12. **Tách `center_finance_summary` ("Tài chính tháng", 9 dòng gộp cash+earned) thành 2 báo cáo dễ đọc** trong nhóm Tổng quan:
+    - **"Dòng tiền tháng" (cash):** Tổng thực thu → Chi vận hành → Lương thực nhận (net) → Tổng chi → **Lợi nhuận dòng tiền**.
+    - **"Doanh thu thực tháng" (earned):** DT thực học phí + DT thực khác → Tổng DT thực → Chi phí (vận hành + lương) → **Lợi nhuận thực**.
+    - Thay báo cáo gộp cũ (hoặc giữ kèm chú thích). Cùng filter `month`.
+13. **Báo cáo tài chính còn THIẾU (earned, theo đối tượng/chi tiết):**
+    - "Doanh thu thực học phí **theo LỚP** (trong kỳ)" — earned gom theo lớp, filter `dateRange` (hiện chỉ có `tuition_by_class` = lũy kế, chưa phải earned-trong-kỳ).
+    - "Doanh thu thực **theo NGÀY (tổng hợp)**" — tổng earned mỗi ngày (hiện `earned_tuition_detail` là từng dòng HV, chưa cộng theo ngày).
+    - (tuỳ chọn) "Doanh thu thực **theo giáo viên**" (quy earned qua lớp phụ trách).
+    - **Lưu ý:** nhiều BC tài chính chi tiết ĐÃ CÓ ở nhóm "Thu chi & lợi nhuận" (`earned_tuition_detail`, `cash_income_detail`, `pnl_monthly_summary`, `profit_earned_object`, `profit_cash_object`) → ưu tiên DẪN người dùng tới đó + đếm tab (mục 11), tránh làm trùng.
+14. **Chốt quyết định kế toán TRƯỚC khi làm 12-13:** "Lợi nhuận thực" trừ lương **gross** (chuẩn accrual) hay **net** (đang dùng)? (xem P2 mục 5).
+15. **(Rà soát trùng)** Công nợ/chưa thực hiện đang có ở 3 chỗ: `center_tuition_unearned_detail` (Tổng quan) ~ `tuition_unearned_summary` + `tuition_by_class` (Học phí) → cân nhắc gộp hoặc dẫn.
+
 **Cần xác minh:** `audit_logs_detail` đọc `l.details` — đối chiếu shape thật của AuditLog (lưu `oldValue/newValue` jsonb), kẻo cột "Chi tiết" luôn ra "—".
 
 ---
