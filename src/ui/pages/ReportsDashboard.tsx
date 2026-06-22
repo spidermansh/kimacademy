@@ -9,6 +9,7 @@ import {
   TrendingUp, FileText, LayoutDashboard, Download
 } from 'lucide-react';
 import DateInput from '../components/ui/DateInput';
+import SearchableSelect from '../components/ui/SearchableSelect';
 
 interface Props {
   transactions: any[];
@@ -639,16 +640,17 @@ export default function ReportsDashboard({
                   {activeReport.filters.includes('student') && (
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Học viên</label>
-                      <select
+                      <SearchableSelect
                         value={filters.studentId}
-                        onChange={e => setFilters(prev => ({ ...prev, studentId: e.target.value }))}
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                      >
-                        <option value="">-- Tất cả học viên --</option>
-                        {students.map(s => (
-                          <option key={s.id} value={s.id}>{s.name} ({s.englishName || '—'})</option>
-                        ))}
-                      </select>
+                        onChange={v => setFilters(prev => ({ ...prev, studentId: v }))}
+                        placeholder="Gõ tên / SĐT để tìm học viên..."
+                        emptyOptionLabel="-- Tất cả học viên --"
+                        options={students.map(s => ({
+                          value: s.id,
+                          label: `${s.name} (${s.englishName || '—'})`,
+                          keywords: `${s.parentPhone || ''} ${s.code || ''} ${s.className || ''}`,
+                        }))}
+                      />
                     </div>
                   )}
 

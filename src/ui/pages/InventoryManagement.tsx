@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api, formatCurrency } from '../../shared/utils';
 import { useToast } from '../components/Toast';
+import SearchableSelect from '../components/ui/SearchableSelect';
 import * as XLSX from 'xlsx';
 
 type SubTabId = 'stocks' | 'movements' | 'items' | 'suppliers' | 'locations' | 'categories';
@@ -281,6 +282,10 @@ export default function InventoryManagement() {
     e.preventDefault();
     if (!mItemId || !mQty || !mDate) {
       toast.error('Lỗi', 'Vui lòng điền đủ thông tin bắt buộc');
+      return;
+    }
+    if (mType === 'issue_to_student' && mSaleMode === 'single' && !mStudentId) {
+      toast.error('Thiếu học viên', 'Vui lòng chọn học viên mua hàng');
       return;
     }
 
@@ -1460,12 +1465,16 @@ export default function InventoryManagement() {
                   {mSaleMode === 'single' ? (
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Học viên mua hàng *</label>
-                      <select required value={mStudentId} onChange={e => setMStudentId(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm">
-                        <option value="">-- Chọn học viên --</option>
-                        {students.map(s => (
-                          <option key={s.id} value={s.id}>{s.name} ({s.parentPhone})</option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        value={mStudentId}
+                        onChange={setMStudentId}
+                        placeholder="Gõ tên / SĐT / lớp để tìm học viên..."
+                        options={students.map((s: any) => ({
+                          value: s.id,
+                          label: `${s.name}${s.parentPhone ? ` (${s.parentPhone})` : ''}`,
+                          keywords: `${s.parentPhone || ''} ${s.code || ''} ${s.className || ''}`,
+                        }))}
+                      />
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-3">
