@@ -28,6 +28,7 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 ## 5. Đã hoàn thành trong phiên hiện tại (theo commit, mới → cũ)
 | Commit | Nội dung |
 |---|---|
+| `8dab25d` | **Báo cáo kho — GĐ D**: `InventoryMovement.supplierId` (+FK Supplier, migration thuần bổ sung) + báo cáo "Nhập hàng theo nhà cung cấp" + select NCC ở form nhập kho. |
 | `989627c` | **Báo cáo kho — GĐ C** (4 báo cáo): Thẻ kho Kardex theo mặt hàng · GD chưa hoàn tất · Bán theo lớp · Theo người thực hiện. Thêm control filter `invItem`. |
 | `f64ff41` | **Báo cáo kho vật tư** (nhóm `grp_inventory`, 7 báo cáo) — GĐ A (hạ tầng) + B (báo cáo cốt lõi) |
 | `d14bb6b` | **Kho: trạng thái "Đã thu – chưa phát" (nợ hàng)** + filter/Excel cho Nhật ký xuất nhập |
@@ -45,13 +46,13 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 | `e2be306` | (WIP checkpoint baseline — gồm phần kho nhập dở trước khi audit) |
 
 ## 6. Đang làm dở / chưa xong
-- **Báo cáo kho — GĐ C** (✅ XONG, commit `989627c`): 4 báo cáo Kardex/GD chưa hoàn tất/bán theo lớp/theo người thực hiện. Nhóm `grp_inventory` nay có 11 báo cáo.
-- **Báo cáo kho — GĐ D** (chưa làm — TASK KẾ TIẾP): cần thêm `supplierId` vào `InventoryMovement` (purchase_in) trước → rồi mới làm báo cáo "theo nhà cung cấp".
+- **Báo cáo kho — GĐ C** (✅ XONG, commit `989627c`): 4 báo cáo Kardex/GD chưa hoàn tất/bán theo lớp/theo người thực hiện.
+- **Báo cáo kho — GĐ D** (✅ XONG, commit `8dab25d`): `InventoryMovement.supplierId` + báo cáo "Nhập hàng theo nhà cung cấp". Nhóm `grp_inventory` nay có **12 báo cáo**. Báo cáo kho coi như hoàn tất.
 - **Chưa merge `fix/audit` → `main`** (chờ quyết định; xem cảnh báo migration ở mục 10).
 - Không có code dở dang chưa commit (working tree sạch).
 
 ## 7. File quan trọng đã sửa/ thêm trong đợt audit
-- `prisma/schema.prisma` — Json columns, DateTime @db.Date, `User.tokenVersion`, `*.createdById`, `AuditLog.userId`, `InventoryMovement.issued/deliveredAt`. 7 migration mới (xem AUDIT_STATE).
+- `prisma/schema.prisma` — Json columns, DateTime @db.Date, `User.tokenVersion`, `*.createdById`, `AuditLog.userId`, `InventoryMovement.issued/deliveredAt`, `InventoryMovement.supplierId` (FK Supplier, GĐ D). 11 migration (xem AUDIT_STATE).
 - `src/infrastructure/db/prisma.client.ts` — **Prisma query extension lớp ngày trong suốt** (DATE_ONLY_FIELDS) + pool config + graceful disconnect.
 - `src/shared/constants.ts` — `REVENUE_CATEGORY_TUITION_OFFLINE`, `isTuitionRevenue`, `PAYMENT_METHOD_BALANCE_TRANSFER`, `isInternalTransfer`.
 - `src/shared/json.ts` — helper coercion jsonb (`toArray/toObject/toJsonString/coerceJson`).
@@ -62,7 +63,7 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 - `src/api/jobs/ledger-reconcile.job.ts` — cron đối soát sổ cái hằng ngày.
 - `src/api/routes/*.ts` — finance, attendance, enrollments, payroll, inventory, ledger (mới), auth, users, admissions, settings, reports.
 - `src/api/middleware/auth.ts` — kiểm tra `tokenVersion` (async).
-- `src/shared/business/reports.ts` — engine + nhóm `grp_inventory` (11 báo cáo: 7 GĐ A+B, 4 GĐ C). Filter `invItem` mới.
+- `src/shared/business/reports.ts` — engine + nhóm `grp_inventory` (12 báo cáo: 7 GĐ A+B, 4 GĐ C, 1 GĐ D theo NCC). Filter `invItem` mới; `InventoryMovementRow.supplierId/supplierName`.
 - `src/ui/pages/ReportsDashboard.tsx`, `InventoryManagement.tsx`, `src/ui/layouts/Sidebar.tsx`, `src/App.tsx`.
 - `scripts/fix-mojibake.mjs`, `scripts/migrate-date-columns.mjs`, `scripts/truncate-all.ts` — script một lần (tham khảo).
 

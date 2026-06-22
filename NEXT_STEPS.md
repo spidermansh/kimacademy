@@ -6,8 +6,8 @@
 | # | Việc | Loại | Ghi chú |
 |---|---|---|---|
 | ~~1~~ | ~~**Báo cáo kho GĐ C** (4 báo cáo)~~ ✅ XONG (`989627c`) | Tính năng | Không đổi schema. Đã nghiệm chứng compute. |
-| 2 | **Báo cáo kho GĐ D** (theo nhà cung cấp) | Tính năng | TASK KẾ TIẾP. CẦN thêm `supplierId` vào movement trước. |
-| 3 | **Sửa migration đổi kiểu thành bảo toàn dữ liệu** | Hạ tầng | BẮT BUỘC trước khi deploy prod có dữ liệu thật. |
+| ~~2~~ | ~~**Báo cáo kho GĐ D** (theo nhà cung cấp)~~ ✅ XONG (`8dab25d`) | Tính năng | `supplierId` + migration thuần bổ sung. Báo cáo kho hoàn tất. |
+| 3 | **Sửa migration đổi kiểu thành bảo toàn dữ liệu** | Hạ tầng | TASK KẾ TIẾP. BẮT BUỘC trước khi deploy prod có dữ liệu thật. |
 | 4 | **Chuẩn bị PR `fix/audit` → `main`** | Quy trình | Đính kèm cảnh báo migration (mục 3). |
 
 ---
@@ -27,15 +27,19 @@
 
 ---
 
-## TASK KẾ TIẾP: Báo cáo kho GĐ D (theo nhà cung cấp)
-- **Tiền đề:** `InventoryMovement` chưa có `supplierId`. Thêm cột `supplierId String?` (+ index, KHÔNG FK cứng theo nguyên tắc D8 nếu muốn — hoặc FK tới Supplier nếu chấp nhận) + migration.
-- Thêm UI chọn nhà cung cấp khi `movementType = purchase_in` trong `InventoryManagement.tsx`.
-- Báo cáo "Nhập hàng theo nhà cung cấp" (SL + giá trị nhập theo NCC, filter `dateRange`).
-- **Lưu ý:** đây là task có đổi schema → cẩn thận migration; với DB prod sau này cần migration không phá dữ liệu.
+## ✅ ĐÃ XONG: Báo cáo kho GĐ D (commit `8dab25d`)
+- **Schema:** `InventoryMovement.supplierId String?` + **FK cứng** tới `Supplier` (`ON DELETE SET NULL` — giữ bản ghi nhập khi NCC bị xóa) + index; back-relation `Supplier.movements`. Chọn FK (không phải id mềm D8) vì nhất quán với các quan hệ khác trên `InventoryMovement` (relatedStudent/Staff đều FK).
+- **Migration `add_supplier_to_inventory_movement`:** THUẦN BỔ SUNG (`ADD COLUMN`/`INDEX`/`FK`, không DROP) → an toàn cả trên DB có dữ liệu (KHÁC nhóm migration đổi kiểu json/date).
+- **Route:** `inventory.ts` nhận `supplierId` khi `purchase_in` (zod passthrough), lưu + GET include `supplier`; `reports.ts` route map `supplierName` server-side.
+- **Báo cáo `inv_purchase_by_supplier`** (`summary`, `dateRange`): gom SL + giá trị nhập theo NCC.
+- **UI:** select 'Nhà cung cấp' trong form nhập kho `InventoryManagement.tsx`.
+- Nghiệm chứng: `tsc` 0 lỗi · `npm test` 71/71 · `build` OK · round-trip thực (tạo `purchase_in` có supplierId → đọc include → map → compute) đúng số liệu.
+
+> Còn thiếu (đề xuất, không bắt buộc): unit test cố định cho báo cáo kho GĐ C/D.
 
 ---
 
-## TASK HẠ TẦNG (trước khi deploy prod): Migration bảo toàn dữ liệu
+## TASK KẾ TIẾP — HẠ TẦNG (trước khi deploy prod): Migration bảo toàn dữ liệu
 - Hiện `prisma/migrations/20260621124340_json_columns` và `20260621132559_date_columns` ở dạng **DROP + tạo lại cột** → mất dữ liệu trên DB có sẵn.
 - Khi cần đưa lên prod có dữ liệu thật: viết migration thủ công dùng `ALTER COLUMN ... TYPE jsonb USING col::jsonb` và `TYPE date USING col::date` (hoặc tạo cột tạm → copy → đổi tên).
 - **Không** chạy `migrate deploy` các migration đổi kiểu hiện tại lên prod có dữ liệu (xem DECISIONS D12).
@@ -43,7 +47,7 @@
 ---
 
 ## ĐỀ XUẤT BƯỚC TIẾP THEO (KHÔNG tự triển khai)
-- Sau khi xong GĐ C/D: thêm **PDF/Excel export server-side** cho báo cáo kho (hiện FE đã có nút Excel cho nhật ký).
+- Báo cáo kho GĐ A→D đã xong → có thể thêm **PDF/Excel export server-side** cho báo cáo kho (hiện FE đã có nút Excel cho nhật ký).
 - Cập nhật `README.md` (đang là template Vite) thành tài liệu dự án thật.
 - Cân nhắc cache `tokenVersion` (giảm 1 truy vấn DB/request) nếu cần tối ưu.
 - Mở rộng zod cho 100% route còn lại.
