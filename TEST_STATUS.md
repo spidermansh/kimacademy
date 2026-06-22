@@ -6,8 +6,8 @@
 | Kiểm tra | Lệnh | Kết quả |
 |---|---|---|
 | Typecheck | `npx tsc --noEmit` (= `npm run lint`) | ✅ **PASS** (0 lỗi, exit 0) |
-| Unit/Integration tests | `npm test` | ✅ **71/71 PASS** (9 test files) |
-| Build | `npm run build` | ✅ **PASS** (`dist/server.js` ~356.1kb sau GĐ D) |
+| Unit/Integration tests | `npm test` | ✅ **72/72 PASS** (9 test files) |
+| Build | `npm run build` | ✅ **PASS** (`dist/server.js` ~364.7kb sau rà soát báo cáo P3) |
 
 → Toàn bộ xanh. Không có test fail tại thời điểm bàn giao.
 
@@ -22,19 +22,19 @@ npx tsc --noEmit                           # typecheck
 npm run build                              # build
 ```
 
-## Đã chạy & kết quả (9 file, 71 test — đều PASS)
+## Đã chạy & kết quả (9 file, 72 test — đều PASS)
 | File | Số test | Loại | Cần DB? |
 |---|---|---|---|
 | `tests/unit/business.test.ts` | 17 | Nghiệp vụ lõi (HV, ghi danh, điểm danh, sổ cái, đổi học phí) | ✅ Có (PostgreSQL) |
 | `tests/unit/inventory.test.ts` | 18 | Kho (nhập/xuất, tồn, bán HV, audit) | ✅ Có |
 | `tests/unit/ledger.test.ts` | 3 | Đối soát sổ cái (drift, recalc idempotent) | ✅ Có |
-| `tests/unit/reports.test.ts` | 12 | Report engine | ✅ Có |
+| `tests/unit/reports.test.ts` | 13 | Report engine | ✅ Có |
 | `tests/unit/encoding.test.ts` | 2 | Chống mojibake + hằng số học phí | ❌ Hàm thuần |
 | `tests/unit/parity.test.ts` | 2 | alerts/dashboard parity | ❌ Hàm thuần |
 | `tests/unit/phase1.test.ts` | 8 | Hằng số (chuyển số dư) + schema zod | ❌ Hàm thuần |
 | `tests/unit/phase2.test.ts` | 8 | Helper ngày UTC + schema zod | ❌ Hàm thuần |
 | `tests/unit/placeholder.test.ts` | 1 | placeholder | ❌ Hàm thuần |
-| **TỔNG** | **71** | | |
+| **TỔNG** | **72** | | |
 
 ## Test chưa chạy / chưa có
 - **Không có test cho luồng "Đã thu – chưa phát" + `/deliver`** của kho (đã kiểm chứng thủ công qua API trong phiên, chưa viết unit test). → Đề xuất bổ sung khi làm tiếp.

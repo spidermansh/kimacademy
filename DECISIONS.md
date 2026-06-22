@@ -86,3 +86,9 @@
 - **Nghiệm chứng:** biểu thức USING test trên giá trị biên (rollback); `migrate reset` áp lại toàn bộ sạch; `migrate diff` (live DB ↔ schema.prisma) = **No difference**; `tsc`/`npm test` 71/71/`build` xanh.
 - **Lưu ý:** `convertedat_date` (`SET DATA TYPE DATE`, timestamp→date implicit) và `inventory_issued` (ADD COLUMN) vốn đã an toàn. Migration GĐ D `add_supplier_to_inventory_movement` cũng thuần bổ sung.
 - **Cấm:** Quay lại dạng DROP+recreate cho migration đổi kiểu; với migration đổi kiểu mới trên cột có thể có dữ liệu phải dùng `ALTER ... USING` (không DROP cột).
+
+## D13. Báo cáo Tổng quan tài chính: tách CASH vs EARNED; lợi nhuận thực dùng lương GROSS
+- **Quyết định:** Báo cáo "Tài chính tháng" (gộp 9 dòng) đã tách thành 2: `cash_flow_monthly` (dòng tiền — lương NET/thực nhận) và `earned_revenue_monthly` (doanh thu thực — lương GROSS/accrual). "Lợi nhuận thực" = tổng doanh thu thực − (chi phí vận hành + lương **GROSS**) → khớp với P&L `pnl_monthly_summary` ở nhóm Thu chi.
+- **Lý do:** Bảng gộp cash+earned khó đọc và lẫn cơ sở lương (net/gross) gây lệch số giữa các báo cáo. Chủ dự án chốt earned-profit dùng gross (chuẩn kế toán accrual).
+- **File:** `src/shared/business/reports.ts` (nhóm `grp_overview`).
+- **Cấm:** Trộn lại cash & earned trong một báo cáo; dùng net cho "lợi nhuận thực" (earned). Báo cáo dòng tiền giữ net.
