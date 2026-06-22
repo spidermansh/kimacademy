@@ -21,6 +21,7 @@ export interface InventoryMovementRow {
   studentId?: string; studentName: string; staffName: string;
   paymentStatus: string; issued: boolean; paymentDate?: string; paymentMethod?: string;
   createdBy: string;
+  supplierId?: string; supplierName?: string;
 }
 export interface InventoryCategoryRow { id: string; name: string }
 
@@ -2716,6 +2717,37 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               }
             });
           return Object.values(byUser).sort((a: any, b: any) => b.count - a.count);
+        },
+      },
+      // #D1 — Nhập hàng theo nhà cung cấp
+      {
+        id: 'inv_purchase_by_supplier',
+        implemented: true,
+        name: 'Nhập hàng theo nhà cung cấp',
+        description: 'Tổng số lần nhập, số lượng và giá trị nhập kho (purchase_in) gom theo nhà cung cấp trong kỳ.',
+        type: 'summary',
+        filters: ['dateRange'],
+        columns: [
+          { key: 'supplierName', label: 'Nhà cung cấp', align: 'left', format: 'text' },
+          { key: 'count', label: 'Số lần nhập', align: 'right', format: 'number' },
+          { key: 'qty', label: 'SL nhập', align: 'right', format: 'number' },
+          { key: 'value', label: 'Giá trị nhập', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const bySup: Record<string, any> = {};
+          inventoryMovements
+            .filter(m => m.movementType === 'purchase_in')
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .forEach(m => {
+              const sup = m.supplierName || '(Không rõ NCC)';
+              bySup[sup] = bySup[sup] || { supplierName: sup, count: 0, qty: 0, value: 0 };
+              bySup[sup].count += 1;
+              bySup[sup].qty += m.quantity;
+              bySup[sup].value += m.totalAmount || 0;
+            });
+          return Object.values(bySup).sort((a: any, b: any) => b.value - a.value);
         },
       },
     ]

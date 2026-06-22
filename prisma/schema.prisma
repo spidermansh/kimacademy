@@ -609,6 +609,8 @@ model InventoryMovement {
   relatedExpense        Expense?           @relation(fields: [relatedExpenseId], references: [id])
   saleBatchId           String?
   saleBatch             InventorySaleBatch? @relation(fields: [saleBatchId], references: [id])
+  supplierId            String?            // NCC cho giao dịch nhập (purchase_in) — báo cáo nhập theo nhà cung cấp
+  supplier              Supplier?          @relation(fields: [supplierId], references: [id])
   paymentStatus         String             @default("not_applicable") // not_applicable | unpaid | paid
   issued                Boolean            @default(true) // false = đã thu tiền nhưng chưa phát hàng (chờ giao)
   deliveredAt           DateTime?          // thời điểm phát hàng (khi issued chuyển true)
@@ -626,6 +628,7 @@ model InventoryMovement {
   @@index([itemId, variantId])
   @@index([relatedStudentId])
   @@index([saleBatchId])
+  @@index([supplierId])
   @@index([paymentStatus, movementType])
   @@index([issued, movementType])
 }
@@ -666,6 +669,7 @@ model Supplier {
   note      String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  movements InventoryMovement[]
 }
 
 // 34. ClassNameHistory - Lịch sử đổi tên lớp học

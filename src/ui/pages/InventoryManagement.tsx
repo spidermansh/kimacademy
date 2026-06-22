@@ -86,6 +86,7 @@ export default function InventoryManagement() {
   const [mVariantId, setMVariantId] = useState('');
   const [mFromLocationId, setMFromLocationId] = useState('');
   const [mToLocationId, setMToLocationId] = useState('');
+  const [mSupplierId, setMSupplierId] = useState(''); // NCC khi nhập kho (purchase_in)
   const [mQty, setMQty] = useState(1);
   const [mUnitCost, setMUnitCost] = useState(0);
   const [mUnitSalePrice, setMUnitSalePrice] = useState(0);
@@ -258,6 +259,7 @@ export default function InventoryManagement() {
     setMVariantId('');
     setMFromLocationId('');
     setMToLocationId('');
+    setMSupplierId('');
     setMQty(1);
     setMUnitCost(0);
     setMUnitSalePrice(0);
@@ -343,6 +345,7 @@ export default function InventoryManagement() {
         unitSalePrice: mUnitSalePrice,
         relatedStudentId: mStudentId || undefined,
         relatedStaffId: mStaffId || undefined,
+        supplierId: mType === 'purchase_in' ? (mSupplierId || undefined) : undefined,
         paymentStatus: mType === 'issue_to_student' && mUnitSalePrice > 0 ? mPaymentStatus : undefined,
         issued: mType === 'issue_to_student' ? mIssued : undefined,
         paymentMethod: mType === 'issue_to_student' && mPaymentStatus === 'paid' ? mPaymentMethod : undefined,
@@ -1382,6 +1385,19 @@ export default function InventoryManagement() {
                   </div>
                 )}
               </div>
+
+              {/* Nhà cung cấp (chỉ khi mua nhập kho) */}
+              {mType === 'purchase_in' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nhà cung cấp</label>
+                  <select value={mSupplierId} onChange={e => setMSupplierId(e.target.value)} className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:border-indigo-500 text-sm">
+                    <option value="">-- Không chọn / chưa rõ --</option>
+                    {suppliers.map(sup => (
+                      <option key={sup.id} value={sup.id}>{sup.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-4">
                 <div>

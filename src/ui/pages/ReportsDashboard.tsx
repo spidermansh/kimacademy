@@ -122,6 +122,7 @@ export default function ReportsDashboard({
         studentId: m.relatedStudentId || undefined, studentName: m.relatedStudent?.name || '', staffName: m.relatedStaff?.name || '',
         paymentStatus: m.paymentStatus, issued: m.issued !== false, paymentDate: m.paymentDate || undefined, paymentMethod: m.paymentMethod || undefined,
         createdBy: m.createdBy || '',
+        supplierId: m.supplierId || undefined, supplierName: m.supplier?.name || '',
       };
     });
     const inventoryCategories = invRaw.categories.map((c: any) => ({ id: c.id, name: c.name }));

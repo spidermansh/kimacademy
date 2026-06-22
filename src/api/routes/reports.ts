@@ -92,7 +92,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
       prisma.inventoryItem.findMany({ include: { category: true } }),
       prisma.inventoryCategory.findMany(),
       prisma.inventoryStock.findMany({ include: { item: true, location: true } }),
-      prisma.inventoryMovement.findMany({ include: { item: true, fromLocation: true, toLocation: true, relatedStudent: true, relatedStaff: true } })
+      prisma.inventoryMovement.findMany({ include: { item: true, fromLocation: true, toLocation: true, relatedStudent: true, relatedStaff: true, supplier: true } })
     ]);
 
     // 2. Format database objects to match V1 Types expected by the report engine
@@ -376,7 +376,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
     });
     const inventoryMovements = invMovementsRaw.map((m: any) => {
       const it = invItemMap.get(m.itemId);
-      return { id: m.id, movementDate: m.movementDate, movementType: m.movementType, itemId: m.itemId, itemCode: it?.code || '', itemName: m.item?.name || '', unit: m.item?.unit || '', categoryName: invCatName(it), fromLocationName: m.fromLocation?.name || '', toLocationName: m.toLocation?.name || '', quantity: m.quantity || 0, unitCost: m.unitCost || 0, unitSalePrice: m.unitSalePrice || 0, totalAmount: m.totalAmount || 0, studentId: m.relatedStudentId || undefined, studentName: m.relatedStudent?.name || '', staffName: m.relatedStaff?.name || '', paymentStatus: m.paymentStatus, issued: m.issued !== false, paymentDate: m.paymentDate || undefined, paymentMethod: m.paymentMethod || undefined, createdBy: m.createdBy || '' };
+      return { id: m.id, movementDate: m.movementDate, movementType: m.movementType, itemId: m.itemId, itemCode: it?.code || '', itemName: m.item?.name || '', unit: m.item?.unit || '', categoryName: invCatName(it), fromLocationName: m.fromLocation?.name || '', toLocationName: m.toLocation?.name || '', quantity: m.quantity || 0, unitCost: m.unitCost || 0, unitSalePrice: m.unitSalePrice || 0, totalAmount: m.totalAmount || 0, studentId: m.relatedStudentId || undefined, studentName: m.relatedStudent?.name || '', staffName: m.relatedStaff?.name || '', paymentStatus: m.paymentStatus, issued: m.issued !== false, paymentDate: m.paymentDate || undefined, paymentMethod: m.paymentMethod || undefined, createdBy: m.createdBy || '', supplierId: m.supplierId || undefined, supplierName: m.supplier?.name || '' };
     });
     const inventoryCategories = invCategoriesRaw.map(c => ({ id: c.id, name: c.name }));
 

@@ -195,7 +195,8 @@ inventoryRouter.get('/inventory/movements', async (req, res) => {
         toLocation: true,
         relatedStudent: true,
         relatedStaff: true,
-        saleBatch: true
+        saleBatch: true,
+        supplier: true
       },
       orderBy: { movementDate: 'desc' }
     });
@@ -217,6 +218,7 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, validateBody(
     unitSalePrice,
     relatedStudentId,
     relatedStaffId,
+    supplierId,
     paymentStatus,
     paymentMethod,
     paymentDate,
@@ -374,6 +376,7 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, validateBody(
         totalAmount: isExport ? (price * qty) : (cost * qty),
         relatedStudentId: relatedStudentId || null,
         relatedStaffId: relatedStaffId || null,
+        supplierId: movementType === 'purchase_in' ? (supplierId || null) : null,
         relatedRevenueOtherId: revenueOtherId,
         paymentStatus: finalPaymentStatus,
         issued: finalIssued,
