@@ -71,6 +71,18 @@ const getStudentClassesStr = (student: Student, enrollList: Enrollment[]) => {
   return activeList.length > 0 ? activeList.join(', ') : (student.className || 'Chưa xếp lớp');
 };
 
+// Đơn giá ghi nhận doanh thu thực cho 1 buổi điểm danh: ưu tiên enrollment khớp lớp+ngày,
+// fallback enrollment cùng lớp, cuối cùng feeHistory hồ sơ học viên. (Dùng cho các báo cáo earned.)
+const earnedRateForAttendance = (a: AttendanceRecord, student: Student | undefined, enrollList: Enrollment[]): number => {
+  if (!student) return 0;
+  const studEnr = enrollList.filter(e => e.studentId === student.id);
+  const match = studEnr.find(e => e.className === a.className && a.date >= e.startDate && (!e.endDate || a.date <= e.endDate));
+  if (match) return match.feePerSession;
+  const classMatch = studEnr.find(e => e.className === a.className);
+  if (classMatch) return classMatch.feePerSession;
+  return getFeeAtDate(a.date, Number(student.feePerSession) || 0, student.feeHistory || []);
+};
+
 export interface ReportDefinition {
   id: string;
   name: string;
@@ -128,53 +140,64 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         }
       },
       {
-        id: 'center_finance_summary',
+        id: 'cash_flow_monthly',
         implemented: true,
-        name: 'Báo cáo tổng hợp tài chính tháng',
-        description: 'Tổng hợp thu chi thực tế, chi phí lương và lợi nhuận thực tế trong tháng.',
+        name: 'Báo cáo dòng tiền tháng (Cash)',
+        description: 'Tiền thực thu, thực chi và lợi nhuận theo DÒNG TIỀN trong tháng (lương tính theo thực nhận/net).',
         type: 'summary',
         filters: ['month'],
         columns: [
-          { key: 'metric', label: 'Chỉ tiêu tài chính', align: 'left', format: 'text' },
-          { key: 'amount', label: 'Số tiền', align: 'right', format: 'currency' },
+          { key: 'metric', label: 'Chỉ tiêu dòng tiền', align: 'left', format: 'text' },
+          { key: 'amount', label: 'Số tiền', align: 'right', format: 'currency', noTotal: true },
+          { key: 'desc', label: 'Mô tả ý nghĩa', align: 'left', format: 'text' }
+        ],
+        compute: ({ transactions, expenses, salaries, filters }) => {
+          const m = filters.month || new Date().toISOString().slice(0, 7);
+          const totalIncome = transactions
+            .filter(t => t.paymentDate?.startsWith(m) && !isOnlineTuition(t.revenueCategory) && !isOnlineStudy(t.studyType) && !isInternalTransfer(t.paymentMethod))
+            .reduce((sum, t) => sum + t.amount, 0);
+          const opExpense = expenses.filter(e => e.date?.startsWith(m)).reduce((sum, e) => sum + e.amount, 0);
+          const payrollNet = salaries.filter(s => s.month === m).reduce((sum, s) => sum + (s.netSalary || 0), 0);
+          const totalExpense = opExpense + payrollNet;
+          return [
+            { metric: '1. Tổng tiền thực thu (Cash)', amount: totalIncome, desc: 'Dòng tiền mặt & chuyển khoản thu trong tháng (đã loại học phí online & chuyển số dư).' },
+            { metric: '2. Chi phí vận hành trung tâm', amount: opExpense, desc: 'Mặt bằng, điện nước, marketing...' },
+            { metric: '3. Lương thực nhận (net)', amount: payrollNet, desc: 'Lương thực trả cho GV & văn phòng (sau thuế & tạm ứng).' },
+            { metric: '4. Tổng tiền chi thực tế (2 + 3)', amount: totalExpense, desc: 'Tổng dòng tiền thực chi trong tháng.' },
+            { metric: '5. Lợi nhuận theo dòng tiền (1 - 4)', amount: totalIncome - totalExpense, desc: 'Chênh lệch thu chi tiền mặt thực tế trong tháng.' }
+          ];
+        }
+      },
+      {
+        id: 'earned_revenue_monthly',
+        implemented: true,
+        name: 'Báo cáo doanh thu thực tháng (Earned)',
+        description: 'Doanh thu thực theo buổi đã học thực tế và lợi nhuận thực (lương tính theo GROSS/chi phí phát sinh).',
+        type: 'summary',
+        filters: ['month'],
+        columns: [
+          { key: 'metric', label: 'Chỉ tiêu doanh thu thực', align: 'left', format: 'text' },
+          { key: 'amount', label: 'Số tiền', align: 'right', format: 'currency', noTotal: true },
           { key: 'desc', label: 'Mô tả ý nghĩa', align: 'left', format: 'text' }
         ],
         compute: ({ students, transactions, expenses, salaries, attendance, classes, enrollments = [], filters }) => {
           const m = filters.month || new Date().toISOString().slice(0, 7);
-          
-          // Doanh thu dòng tiền (Cash Collected)
-          const totalIncome = transactions
-            .filter(t => t.paymentDate?.startsWith(m) && !isOnlineTuition(t.revenueCategory) && !isOnlineStudy(t.studyType) && !isInternalTransfer(t.paymentMethod))
-            .reduce((sum, t) => sum + t.amount, 0);
-
-          // Chi phí vận hành
-          const opExpense = expenses
-            .filter(e => e.date?.startsWith(m))
-            .reduce((sum, e) => sum + e.amount, 0);
-
-          // Chi phí nhân sự lương
-          const payroll = salaries
-            .filter(s => s.month === m)
-            .reduce((sum, s) => sum + (s.netSalary || 0), 0);
-
-          const totalExpense = opExpense + payroll;
-
-          // Doanh thu thực
           const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes, enrollments);
           const earnedTuition = revSummary.tuitionEarnedInPeriod;
           const otherRevenue = revSummary.otherRevenueCollectedInPeriod;
           const totalEarned = revSummary.totalEarnedRevenueInPeriod;
-
+          const opExpense = expenses.filter(e => e.date?.startsWith(m)).reduce((sum, e) => sum + e.amount, 0);
+          // Lương GROSS = chi phí lương phát sinh (accrual) — chốt với chủ dự án; khớp P&L nhóm Thu chi.
+          const payrollGross = salaries.filter(s => s.month === m).reduce((sum, s) => sum + (s.grossSalary || 0), 0);
+          const totalCost = opExpense + payrollGross;
           return [
-            { metric: '1. Tổng tiền thực thu (Cash)', amount: totalIncome, desc: 'Dòng tiền mặt & chuyển khoản thu trong tháng.' },
-            { metric: '2. Chi phí vận hành trung tâm', amount: opExpense, desc: 'Mặt bằng, điện nước, marketing...' },
-            { metric: '3. Lương còn thanh toán / Thực nhận', amount: payroll, desc: 'Tổng lương thực nhận của giáo viên & văn phòng trong tháng (sau thuế & tạm ứng).' },
-            { metric: '4. Tổng tiền chi thực tế (2 + 3)', amount: totalExpense, desc: 'Tổng dòng tiền thực chi trong tháng. Dòng tiền lương đầy đủ, bao gồm tạm ứng và các khoản nộp thay, sẽ được chuẩn hóa ở PAY-05.' },
-            { metric: '5. Doanh thu thực học phí (Earned Tuition)', amount: earnedTuition, desc: 'Số tiền tương ứng số buổi học sinh đã học thực tế.' },
-            { metric: '6. Doanh thu thực khác', amount: otherRevenue, desc: 'Thu sách, đồng phục, lệ phí thi...' },
-            { metric: '7. Tổng doanh thu thực tháng (5 + 6)', amount: totalEarned, desc: 'Tổng giá trị dịch vụ/hàng hóa đã cung cấp hoàn tất.' },
-            { metric: '8. Lợi nhuận thực (Earned Profit) (7 - 4)', amount: totalEarned - totalExpense, desc: 'Doanh thu thực tế trừ chi phí thực tế.' },
-            { metric: '9. Lợi nhuận theo dòng tiền (1 - 4)', amount: totalIncome - totalExpense, desc: 'Chênh lệch thu chi thực tế trong tháng.' }
+            { metric: '1. Doanh thu thực học phí (Earned Tuition)', amount: earnedTuition, desc: 'Số tiền tương ứng số buổi học viên đã học thực tế (có mặt/vắng không phép).' },
+            { metric: '2. Doanh thu thực khác', amount: otherRevenue, desc: 'Thu sách, đồng phục, lệ phí thi... ghi nhận khi thu.' },
+            { metric: '3. Tổng doanh thu thực (1 + 2)', amount: totalEarned, desc: 'Tổng giá trị dịch vụ/hàng hóa đã cung cấp.' },
+            { metric: '4. Chi phí vận hành', amount: opExpense, desc: 'Mặt bằng, điện nước, marketing...' },
+            { metric: '5. Chi phí lương (gross/accrual)', amount: payrollGross, desc: 'Tổng chi phí lương phát sinh (trước thuế & tạm ứng).' },
+            { metric: '6. Tổng chi phí thực (4 + 5)', amount: totalCost, desc: 'Tổng chi phí phát sinh trong kỳ.' },
+            { metric: '7. Lợi nhuận thực (3 - 6)', amount: totalEarned - totalCost, desc: 'Doanh thu thực trừ chi phí phát sinh (accrual).' }
           ];
         }
       },
@@ -398,10 +421,10 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         }
       },
       {
-        id: 'student_near_end_detail',
+        id: 'student_sessions_low_detail',
         implemented: true,
-        name: 'Báo cáo học viên sắp hết buổi',
-        description: 'Học viên chỉ còn từ 1 đến 2 buổi học.',
+        name: 'Báo cáo học viên cần nhắc đóng phí (sắp/đã hết buổi)',
+        description: 'Học viên đang học còn từ 0 đến N buổi (gộp "sắp hết" + "hết buổi"). Ngưỡng N theo tham số hệ thống hoặc bộ lọc.',
         type: 'detail',
         filters: ['class', 'search'],
         columns: [
@@ -409,7 +432,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
           { key: 'bought', label: 'Buổi đã mua', align: 'right', format: 'number' },
           { key: 'used', label: 'Buổi đã dùng', align: 'right', format: 'number' },
-          { key: 'remaining', label: 'Buổi còn lại', align: 'right', format: 'number' }
+          { key: 'remaining', label: 'Buổi còn lại', align: 'right', format: 'number' },
+          { key: 'status', label: 'Tình trạng', align: 'center', format: 'text' }
         ],
         compute: ({ students, transactions, attendance, enrollments = [], filters, systemParameters }) => {
           const lowSessionsParam = systemParameters?.find(p => p.key === 'lowRemainingSessionsThreshold' && p.isActive);
@@ -434,51 +458,12 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
                 className: getStudentClassesStr(s, enrollments),
                 bought: summary.totalSessionsBought,
                 used: summary.totalSessionsUsed,
-                remaining: summary.sessionsRemaining
+                remaining: summary.sessionsRemaining,
+                status: summary.sessionsRemaining === 0 ? 'Hết buổi' : 'Sắp hết'
               };
             })
-            .filter(row => row.remaining > 0 && row.remaining <= lowSessionsVal);
-        }
-      },
-      {
-        id: 'student_end_detail',
-        implemented: true,
-        name: 'Báo cáo học viên hết buổi',
-        description: 'Học viên đã học hết 100% số buổi đã đóng tiền (buổi còn lại <= 0).',
-        type: 'detail',
-        filters: ['class', 'search'],
-        columns: [
-          { key: 'name', label: 'Học viên', align: 'left', format: 'text' },
-          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
-          { key: 'bought', label: 'Buổi đã mua', align: 'right', format: 'number' },
-          { key: 'used', label: 'Buổi đã học', align: 'right', format: 'number' },
-          { key: 'remaining', label: 'Buổi còn lại', align: 'right', format: 'number' }
-        ],
-        compute: ({ students, transactions, attendance, enrollments = [], filters }) => {
-          return students
-            .filter(s => {
-              if (s.status !== 'active') return false;
-              if (filters.classId) {
-                const isEnrolled = enrollments.some(e => e.studentId === s.id && e.className === filters.classId && e.isActive);
-                if (!isEnrolled) return false;
-              }
-              if (filters.searchQuery) {
-                const q = filters.searchQuery.toLowerCase();
-                return s.name.toLowerCase().includes(q);
-              }
-              return true;
-            })
-            .map(s => {
-              const summary = computeTuitionSummary(s, transactions, attendance, enrollments);
-              return {
-                name: s.name,
-                className: getStudentClassesStr(s, enrollments),
-                bought: summary.totalSessionsBought,
-                used: summary.totalSessionsUsed,
-                remaining: summary.sessionsRemaining
-              };
-            })
-            .filter(row => row.remaining === 0);
+            .filter(row => row.remaining >= 0 && row.remaining <= lowSessionsVal)
+            .sort((a, b) => a.remaining - b.remaining);
         }
       },
       {
@@ -637,8 +622,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
       {
         id: 'student_waiting_class_detail',
         implemented: true,
-        name: 'Báo cáo danh sách học viên chờ xếp lớp',
-        description: 'Danh sách các học viên đã tạo hồ sơ chính thức nhưng chưa được phân vào lớp học cụ thể.',
+        name: 'Báo cáo học viên chưa xếp lớp (hồ sơ chính thức)',
+        description: 'Học viên đã có hồ sơ chính thức nhưng chưa có lớp đang học. (Khác "Lead trúng tuyển chờ xếp lớp" ở nhóm Tuyển sinh — dựa trên lead.)',
         type: 'detail',
         filters: ['search'],
         columns: [
@@ -672,6 +657,84 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               name: s.name,
               parentPhone: s.parentPhone || '—',
               enrollDate: s.enrollDate || '—',
+              notes: s.notes || '—'
+            }));
+        }
+      },
+      {
+        id: 'student_birthday_detail',
+        implemented: true,
+        name: 'Báo cáo sinh nhật học viên',
+        description: 'Học viên đang học/học thử có sinh nhật trong tháng được chọn (phục vụ CSKH).',
+        type: 'detail',
+        filters: ['month', 'search'],
+        columns: [
+          { key: 'name', label: 'Học viên', align: 'left', format: 'text' },
+          { key: 'birthDate', label: 'Ngày sinh', align: 'center', format: 'date' },
+          { key: 'age', label: 'Tuổi', align: 'right', format: 'number', noTotal: true },
+          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
+          { key: 'phone', label: 'SĐT Phụ huynh', align: 'center', format: 'text' }
+        ],
+        compute: ({ students, enrollments = [], filters }) => {
+          const m = filters.month || new Date().toISOString().slice(0, 7);
+          const mm = m.slice(5, 7);
+          const nowY = new Date().getFullYear();
+          return students
+            .filter(s => {
+              if (s.status === 'left' || s.status === 'suspended') return false;
+              if (!s.birthDate || s.birthDate.length < 10) return false;
+              if (s.birthDate.slice(5, 7) !== mm) return false;
+              if (filters.searchQuery) {
+                const q = filters.searchQuery.toLowerCase();
+                return s.name.toLowerCase().includes(q) || (s.parentPhone || '').includes(q);
+              }
+              return true;
+            })
+            .map(s => ({
+              name: s.name,
+              birthDate: s.birthDate,
+              age: nowY - Number(s.birthDate!.slice(0, 4)),
+              className: getStudentClassesStr(s, enrollments),
+              phone: s.parentPhone || '—'
+            }))
+            .sort((a, b) => (a.birthDate || '').slice(8, 10).localeCompare((b.birthDate || '').slice(8, 10)));
+        }
+      },
+      {
+        id: 'student_trial_detail',
+        implemented: true,
+        name: 'Báo cáo học viên học thử (trial)',
+        description: 'Danh sách học viên đang ở trạng thái học thử (trial) — không nằm trong các báo cáo "đang học".',
+        type: 'detail',
+        filters: ['class', 'search'],
+        columns: [
+          { key: 'id', label: 'Mã học viên', align: 'left', format: 'text' },
+          { key: 'name', label: 'Học viên', align: 'left', format: 'text' },
+          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
+          { key: 'enrollDate', label: 'Ngày đăng ký', align: 'center', format: 'date' },
+          { key: 'phone', label: 'SĐT Phụ huynh', align: 'center', format: 'text' },
+          { key: 'notes', label: 'Ghi chú', align: 'left', format: 'text' }
+        ],
+        compute: ({ students, enrollments = [], filters }) => {
+          return students
+            .filter(s => {
+              if (s.status !== 'trial') return false;
+              if (filters.classId) {
+                const isEnrolled = enrollments.some(e => e.studentId === s.id && e.className === filters.classId && e.isActive);
+                if (!isEnrolled) return false;
+              }
+              if (filters.searchQuery) {
+                const q = filters.searchQuery.toLowerCase();
+                return s.name.toLowerCase().includes(q) || (s.parentPhone || '').includes(q);
+              }
+              return true;
+            })
+            .map(s => ({
+              id: s.id,
+              name: s.name,
+              className: getStudentClassesStr(s, enrollments),
+              enrollDate: s.enrollDate || '—',
+              phone: s.parentPhone || '—',
               notes: s.notes || '—'
             }));
         }
@@ -1579,6 +1642,77 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         }
       },
       {
+        id: 'earned_tuition_by_class',
+        implemented: true,
+        name: 'Doanh thu thực học phí theo lớp (kỳ)',
+        description: 'Doanh thu thực học phí ghi nhận từ buổi đã học (có mặt/vắng KP), gom theo lớp trong khoảng ngày.',
+        type: 'object',
+        filters: ['dateRange', 'class'],
+        columns: [
+          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
+          { key: 'sessions', label: 'Lượt buổi tính phí', align: 'right', format: 'number' },
+          { key: 'earned', label: 'Doanh thu thực', align: 'right', format: 'currency' }
+        ],
+        compute: ({ attendance, students, enrollments = [], filters }) => {
+          const start = filters.startDate;
+          const end = filters.endDate;
+          const studentMap = new Map<string, Student>();
+          students.forEach(s => studentMap.set(s.id, s));
+          const byClass: Record<string, any> = {};
+          attendance
+            .filter(a => {
+              if (a.status !== 'present' && a.status !== 'absent') return false;
+              if (start && a.date < start) return false;
+              if (end && a.date > end) return false;
+              if (filters.classId && a.classId !== filters.classId && a.className !== filters.classId) return false;
+              return true;
+            })
+            .forEach(a => {
+              const cls = a.className || '—';
+              const rate = earnedRateForAttendance(a, studentMap.get(a.studentId), enrollments);
+              byClass[cls] = byClass[cls] || { className: cls, sessions: 0, earned: 0 };
+              byClass[cls].sessions += 1;
+              byClass[cls].earned += rate;
+            });
+          return Object.values(byClass).sort((a: any, b: any) => b.earned - a.earned);
+        }
+      },
+      {
+        id: 'earned_revenue_by_day',
+        implemented: true,
+        name: 'Doanh thu thực học phí theo ngày (tổng hợp)',
+        description: 'Tổng doanh thu thực học phí mỗi ngày (theo buổi đã học), trong khoảng ngày chọn.',
+        type: 'object',
+        filters: ['dateRange', 'class'],
+        columns: [
+          { key: 'date', label: 'Ngày', align: 'center', format: 'date' },
+          { key: 'sessions', label: 'Lượt buổi tính phí', align: 'right', format: 'number' },
+          { key: 'earned', label: 'Doanh thu thực', align: 'right', format: 'currency' }
+        ],
+        compute: ({ attendance, students, enrollments = [], filters }) => {
+          const start = filters.startDate;
+          const end = filters.endDate;
+          const studentMap = new Map<string, Student>();
+          students.forEach(s => studentMap.set(s.id, s));
+          const byDay: Record<string, any> = {};
+          attendance
+            .filter(a => {
+              if (a.status !== 'present' && a.status !== 'absent') return false;
+              if (start && a.date < start) return false;
+              if (end && a.date > end) return false;
+              if (filters.classId && a.classId !== filters.classId && a.className !== filters.classId) return false;
+              return true;
+            })
+            .forEach(a => {
+              const rate = earnedRateForAttendance(a, studentMap.get(a.studentId), enrollments);
+              byDay[a.date] = byDay[a.date] || { date: a.date, sessions: 0, earned: 0 };
+              byDay[a.date].sessions += 1;
+              byDay[a.date].earned += rate;
+            });
+          return Object.values(byDay).sort((a: any, b: any) => b.date.localeCompare(a.date));
+        }
+      },
+      {
         id: 'other_income_detail',
         implemented: true,
         name: 'Báo cáo doanh thu khác',
@@ -2249,8 +2383,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
       {
         id: 'admission_waiting_class_detail',
         implemented: true,
-        name: 'Báo cáo danh sách chờ xếp lớp',
-        description: 'Chi tiết các học viên tiềm năng đã trúng tuyển hoặc đã chuyển đổi nhưng chưa được xếp lớp học.',
+        name: 'Báo cáo lead trúng tuyển chờ xếp lớp',
+        description: 'Lead tuyển sinh đã trúng tuyển/đã chuyển đổi nhưng chưa xếp lớp. (Dựa trên dữ liệu tuyển sinh — khác "Học viên chưa xếp lớp" ở nhóm Học viên.)',
         type: 'detail',
         filters: ['search'],
         columns: [

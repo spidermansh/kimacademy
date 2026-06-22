@@ -84,13 +84,15 @@ export default function ReportsDashboard({
 
   // Dữ liệu kho vật tư cho các báo cáo nhóm "grp_inventory" (tự nạp).
   const [invRaw, setInvRaw] = useState<{ items: any[]; categories: any[]; stocks: any[]; movements: any[]; locations: any[] }>({ items: [], categories: [], stocks: [], movements: [], locations: [] });
+  const [invLoading, setInvLoading] = useState(true);
   useEffect(() => {
+    setInvLoading(true);
     Promise.all([
       api.getInventoryItems(), api.getInventoryCategories(),
       api.getInventoryStocks(), api.getInventoryMovements(), api.getInventoryLocations(),
     ]).then(([items, categories, stocks, movements, locations]) => {
       setInvRaw({ items, categories, stocks, movements, locations });
-    }).catch(() => { /* phân hệ kho có thể trống */ });
+    }).catch(() => { /* phân hệ kho có thể trống */ }).finally(() => setInvLoading(false));
   }, []);
 
   // Map dữ liệu kho thô (API) sang shape phẳng cho report engine.
@@ -136,6 +138,13 @@ export default function ReportsDashboard({
   const availableReports = useMemo(() => {
     return activeGroup.reports.filter(r => r.type === selectedType);
   }, [activeGroup, selectedType]);
+
+  // Đếm số báo cáo (đã triển khai) theo từng dạng trong nhóm hiện tại — hiển thị trên tab.
+  const typeCounts = useMemo(() => {
+    const c: Record<string, number> = { summary: 0, detail: 0, object: 0 };
+    activeGroup.reports.forEach(r => { if (r.implemented) c[r.type] = (c[r.type] || 0) + 1; });
+    return c;
+  }, [activeGroup]);
 
   // Auto select report when Group or Type changes
   useEffect(() => {
@@ -458,7 +467,7 @@ export default function ReportsDashboard({
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            📊 Báo cáo Tổng hợp
+            📊 Báo cáo Tổng hợp ({typeCounts.summary})
           </button>
           <button
             onClick={() => setSelectedType('detail')}
@@ -468,7 +477,7 @@ export default function ReportsDashboard({
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            📋 Báo cáo Chi tiết
+            📋 Báo cáo Chi tiết ({typeCounts.detail})
           </button>
           <button
             onClick={() => setSelectedType('object')}
@@ -478,7 +487,7 @@ export default function ReportsDashboard({
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            👤 Báo cáo theo Đối tượng
+            👤 Báo cáo theo Đối tượng ({typeCounts.object})
           </button>
         </div>
         <div className="hidden lg:flex items-center gap-2 pr-3">
@@ -882,6 +891,11 @@ export default function ReportsDashboard({
                 <ShieldAlert className="w-12 h-12 stroke-1 opacity-50 mb-3 text-slate-400" />
                 <p className="text-xs font-extrabold text-slate-500">Báo cáo không dùng trong giai đoạn chạy thử</p>
                 <p className="text-[10px] text-slate-400 mt-1">Sẽ triển khai sau.</p>
+              </div>
+            ) : selectedGroupId === 'grp_inventory' && invLoading && reportData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                <Clock className="w-12 h-12 stroke-1 opacity-50 mb-3 animate-pulse text-indigo-300" />
+                <p className="text-xs font-extrabold text-slate-500">Đang tải dữ liệu kho...</p>
               </div>
             ) : reportData.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-slate-400">
