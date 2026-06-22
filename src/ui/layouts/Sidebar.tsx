@@ -12,7 +12,7 @@ export type TabId =
   | 'ban-lam-viec' | 'tuyen-sinh' | 'quan-ly-hoc-vien' | 'quan-ly-lop' | 'diem-danh'
   | 'thu-tien' | 'chi-phi' | 'hoc-phi' | 'nhac-ph' | 'inventory'
   | 'staff-list' | 'cham-cong' | 'ung-luong' | 'bang-luong'
-  | 'bc-dashboard' | 'bc-student' | 'bc-class' | 'bc-tuition' | 'bc-finance' | 'bc-staff' | 'bc-audit' | 'bc-leads'
+  | 'bc-dashboard' | 'bc-student' | 'bc-class' | 'bc-tuition' | 'bc-finance' | 'bc-staff' | 'bc-inventory' | 'bc-audit' | 'bc-leads'
   | 'huong-dan' | 'quan-ly-user' | 'cai-dat' | 'gv-home';
 
 interface NavItem {
@@ -117,6 +117,7 @@ const NAV_MODULES: NavModule[] = [
       { id: 'bc-tuition',   label: 'Học phí & công nợ',    icon: <Wallet className="w-5 h-5" />,     color: 'cyan' },
       { id: 'bc-finance',   label: 'Thu chi & lợi nhuận',  icon: <TrendingUp className="w-5 h-5" from="lucide" /> as any, color: 'emerald' },
       { id: 'bc-staff',     label: 'Nhân sự & giáo viên',  icon: <Briefcase className="w-5 h-5" />,  color: 'orange' },
+      { id: 'bc-inventory', label: 'Kho vật tư',          icon: <Package className="w-5 h-5" />,    color: 'indigo' },
       { id: 'bc-audit',     label: 'Đối soát & nhật ký',   icon: <Clock className="w-5 h-5" />,      color: 'slate' },
       { id: 'bc-leads',     label: 'Tuyển sinh',          icon: <PhoneCall className="w-5 h-5" />,  color: 'pink' },
     ],

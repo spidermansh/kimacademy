@@ -157,6 +157,12 @@ const TAB_LOOKUP: Record<TabId, { label: string; icon: React.ReactNode; color: s
     color: 'orange',
     subtitle: 'Hiệu suất đứng lớp & chi phí lương nhân viên'
   },
+  'bc-inventory': {
+    label: 'Báo cáo kho vật tư',
+    icon: <Package className="w-5 h-5" />,
+    color: 'indigo',
+    subtitle: 'Tồn kho, xuất nhập, lãi gộp & công nợ vật tư'
+  },
   'bc-audit': {
     label: 'Báo cáo đối soát',
     icon: <Clock className="w-5 h-5" />,
@@ -202,6 +208,7 @@ const getGroupIdFromTab = (tab: TabId): string => {
     case 'bc-tuition': return 'grp_tuition';
     case 'bc-finance': return 'grp_finance';
     case 'bc-staff': return 'grp_staff';
+    case 'bc-inventory': return 'grp_inventory';
     case 'bc-audit': return 'grp_reconciliation';
     case 'bc-leads': return 'grp_admission';
     default: return 'grp_overview';
@@ -663,6 +670,7 @@ function AppInner() {
               'grp_tuition': 'bc-tuition',
               'grp_finance': 'bc-finance',
               'grp_staff': 'bc-staff',
+              'grp_inventory': 'bc-inventory',
               'grp_reconciliation': 'bc-audit',
               'grp_admission': 'bc-leads',
             };

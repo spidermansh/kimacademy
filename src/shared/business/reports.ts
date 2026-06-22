@@ -2,6 +2,28 @@ import { Student, Transaction, AttendanceRecord, Class, StaffMember, TeachingLog
 import { getFeeAtDate, computeTuitionSummary, computeRevenueSummary, computeTuitionCost } from './tuition';
 import { formatDateKey, formatDate } from '../utils';
 
+// ===== Kho vật tư (Inventory) — các shape phẳng cho report engine =====
+export interface InventoryItemRow {
+  id: string; code: string; name: string; unit: string;
+  categoryId: string; categoryName: string;
+  minStockLevel: number; defaultSalePrice: number; defaultCostPrice: number;
+}
+export interface InventoryStockRow {
+  itemId: string; itemCode: string; itemName: string; unit: string;
+  categoryName: string; locationId: string; locationName: string;
+  quantityOnHand: number; averageCost: number; minStockLevel: number; salePrice: number;
+}
+export interface InventoryMovementRow {
+  id: string; movementDate: string; movementType: string;
+  itemId: string; itemCode: string; itemName: string; unit: string; categoryName: string;
+  fromLocationName: string; toLocationName: string;
+  quantity: number; unitCost: number; unitSalePrice: number; totalAmount: number;
+  studentId?: string; studentName: string; staffName: string;
+  paymentStatus: string; issued: boolean; paymentDate?: string; paymentMethod?: string;
+  createdBy: string;
+}
+export interface InventoryCategoryRow { id: string; name: string }
+
 export interface ReportParams {
   students: Student[];
   classes: Class[];
@@ -17,6 +39,10 @@ export interface ReportParams {
   systemParameters?: SystemParameter[];
   admissionLeads?: AdmissionLead[];
   enrollments?: Enrollment[];
+  inventoryItems?: InventoryItemRow[];
+  inventoryStocks?: InventoryStockRow[];
+  inventoryMovements?: InventoryMovementRow[];
+  inventoryCategories?: InventoryCategoryRow[];
   filters: {
     month?: string;
     startDate?: string;
@@ -32,6 +58,9 @@ export interface ReportParams {
     reconciliationStatus?: string;
     searchQuery?: string;
     threshold?: number;
+    itemId?: string;
+    categoryId?: string;
+    locationId?: string;
   };
 }
 
@@ -45,7 +74,7 @@ export interface ReportDefinition {
   name: string;
   description: string;
   type: 'summary' | 'detail' | 'object';
-  filters: ('month' | 'dateRange' | 'class' | 'student' | 'teacher' | 'paymentMethod' | 'revenueCategory' | 'expenseCategory' | 'staff' | 'classStatus' | 'reconciliationStatus' | 'search')[];
+  filters: ('month' | 'dateRange' | 'class' | 'student' | 'teacher' | 'paymentMethod' | 'revenueCategory' | 'expenseCategory' | 'staff' | 'classStatus' | 'reconciliationStatus' | 'search' | 'invItem' | 'invCategory' | 'invLocation')[];
   columns: { key: string; label: string; align?: 'left' | 'right' | 'center'; format?: 'currency' | 'date' | 'number' | 'text' }[];
   compute: (params: ReportParams) => any[];
   implemented: boolean;
@@ -2252,6 +2281,277 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             }));
         }
       }
+    ]
+  },
+  {
+    id: 'grp_inventory',
+    label: 'Báo cáo kho vật tư',
+    icon: '📦',
+    reports: [
+      // #2 — Giá trị tồn kho hiện tại
+      {
+        id: 'inv_stock_valuation',
+        implemented: true,
+        name: 'Giá trị tồn kho hiện tại',
+        description: 'Số lượng tồn, giá vốn bình quân và giá trị tồn theo từng mặt hàng / kho.',
+        type: 'summary',
+        filters: ['invCategory', 'invLocation'],
+        columns: [
+          { key: 'itemCode', label: 'Mã SKU', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'categoryName', label: 'Nhóm', align: 'left', format: 'text' },
+          { key: 'locationName', label: 'Kho', align: 'left', format: 'text' },
+          { key: 'quantityOnHand', label: 'SL tồn', align: 'right', format: 'number' },
+          { key: 'averageCost', label: 'Giá vốn BQ', align: 'right', format: 'currency' },
+          { key: 'value', label: 'Giá trị tồn', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryStocks = [], inventoryCategories = [], filters }) => {
+          const catName = filters.categoryId ? inventoryCategories.find(c => c.id === filters.categoryId)?.name : null;
+          return inventoryStocks
+            .filter(s => (!catName || s.categoryName === catName) && (!filters.locationId || s.locationId === filters.locationId))
+            .map(s => ({
+              itemCode: s.itemCode, itemName: s.itemName, categoryName: s.categoryName, locationName: s.locationName,
+              quantityOnHand: s.quantityOnHand, averageCost: s.averageCost, value: s.quantityOnHand * s.averageCost,
+            }))
+            .sort((a, b) => b.value - a.value);
+        },
+      },
+      // #1 — Nhập – Xuất – Tồn theo kỳ
+      {
+        id: 'inv_in_out_balance',
+        implemented: true,
+        name: 'Nhập – Xuất – Tồn theo kỳ',
+        description: 'Tồn đầu kỳ, tổng nhập, tổng xuất và tồn cuối kỳ theo từng mặt hàng.',
+        type: 'summary',
+        filters: ['dateRange', 'invCategory'],
+        columns: [
+          { key: 'itemCode', label: 'Mã SKU', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'unit', label: 'ĐVT', align: 'left', format: 'text' },
+          { key: 'opening', label: 'Tồn đầu', align: 'right', format: 'number' },
+          { key: 'totalIn', label: 'Nhập', align: 'right', format: 'number' },
+          { key: 'totalOut', label: 'Xuất', align: 'right', format: 'number' },
+          { key: 'closing', label: 'Tồn cuối', align: 'right', format: 'number' },
+          { key: 'closingValue', label: 'Giá trị tồn cuối', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], inventoryItems = [], inventoryStocks = [], inventoryCategories = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const catName = filters.categoryId ? inventoryCategories.find(c => c.id === filters.categoryId)?.name : null;
+          // Giá vốn BQ theo mặt hàng (gộp các kho).
+          const costMap: Record<string, { v: number; q: number }> = {};
+          inventoryStocks.forEach(s => {
+            costMap[s.itemId] = costMap[s.itemId] || { v: 0, q: 0 };
+            costMap[s.itemId].v += s.quantityOnHand * s.averageCost;
+            costMap[s.itemId].q += s.quantityOnHand;
+          });
+          const avgCost = (itemId: string, fallback: number) => {
+            const c = costMap[itemId];
+            return c && c.q > 0 ? c.v / c.q : fallback;
+          };
+          const delta = (m: any) => {
+            if (m.movementType === 'issue_to_student' && m.issued === false) return 0;
+            return (m.toLocationName ? m.quantity : 0) - (m.fromLocationName ? m.quantity : 0);
+          };
+          const items = inventoryItems.filter(it => !catName || it.categoryName === catName);
+          return items.map(it => {
+            let opening = 0, totalIn = 0, totalOut = 0;
+            inventoryMovements.filter(m => m.itemId === it.id).forEach(m => {
+              const d = delta(m);
+              if (m.movementDate < start) opening += d;
+              else if (m.movementDate <= end) { if (d > 0) totalIn += d; else totalOut += -d; }
+            });
+            const closing = opening + totalIn - totalOut;
+            return {
+              itemCode: it.code, itemName: it.name, unit: it.unit,
+              opening, totalIn, totalOut, closing,
+              closingValue: closing * avgCost(it.id, it.defaultCostPrice),
+            };
+          }).filter(r => r.opening || r.totalIn || r.totalOut || r.closing);
+        },
+      },
+      // #3 — Doanh thu – Giá vốn – Lãi gộp vật tư
+      {
+        id: 'inv_gross_margin',
+        implemented: true,
+        name: 'Doanh thu – Giá vốn – Lãi gộp vật tư',
+        description: 'Doanh thu bán, giá vốn xuất bán và lãi gộp theo nhóm vật tư trong kỳ.',
+        type: 'summary',
+        filters: ['dateRange', 'invCategory'],
+        columns: [
+          { key: 'categoryName', label: 'Nhóm vật tư', align: 'left', format: 'text' },
+          { key: 'qty', label: 'SL bán', align: 'right', format: 'number' },
+          { key: 'revenue', label: 'Doanh thu', align: 'right', format: 'currency' },
+          { key: 'cogs', label: 'Giá vốn', align: 'right', format: 'currency' },
+          { key: 'grossProfit', label: 'Lãi gộp', align: 'right', format: 'currency' },
+          { key: 'marginPct', label: 'Tỷ suất', align: 'right', format: 'text' },
+        ],
+        compute: ({ inventoryMovements = [], inventoryStocks = [], inventoryItems = [], inventoryCategories = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const filterCat = filters.categoryId ? inventoryCategories.find(c => c.id === filters.categoryId)?.name : null;
+          const costMap: Record<string, { v: number; q: number }> = {};
+          inventoryStocks.forEach(s => {
+            costMap[s.itemId] = costMap[s.itemId] || { v: 0, q: 0 };
+            costMap[s.itemId].v += s.quantityOnHand * s.averageCost;
+            costMap[s.itemId].q += s.quantityOnHand;
+          });
+          const itemCost: Record<string, number> = {};
+          inventoryItems.forEach(it => { itemCost[it.id] = it.defaultCostPrice; });
+          const unitCost = (itemId: string) => {
+            const c = costMap[itemId];
+            return c && c.q > 0 ? c.v / c.q : (itemCost[itemId] || 0);
+          };
+          const byCat: Record<string, any> = {};
+          inventoryMovements
+            .filter(m => m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0 && m.movementDate >= start && m.movementDate <= end)
+            .filter(m => !filterCat || m.categoryName === filterCat)
+            .forEach(m => {
+              const cat = m.categoryName || 'Khác';
+              byCat[cat] = byCat[cat] || { categoryName: cat, qty: 0, revenue: 0, cogs: 0 };
+              byCat[cat].qty += m.quantity;
+              byCat[cat].revenue += m.totalAmount;
+              byCat[cat].cogs += unitCost(m.itemId) * m.quantity;
+            });
+          return Object.values(byCat).map((r: any) => ({
+            ...r,
+            grossProfit: r.revenue - r.cogs,
+            marginPct: r.revenue > 0 ? `${Math.round(((r.revenue - r.cogs) / r.revenue) * 100)}%` : '—',
+          }));
+        },
+      },
+      // #4 — Tổng hợp công nợ vật tư
+      {
+        id: 'inv_receivables_summary',
+        implemented: true,
+        name: 'Tổng hợp công nợ vật tư',
+        description: 'Nợ tiền (đã phát chưa thu) và nợ hàng (đã thu chưa phát) tính tới hiện tại.',
+        type: 'summary',
+        filters: ['dateRange'],
+        columns: [
+          { key: 'type', label: 'Loại công nợ', align: 'left', format: 'text' },
+          { key: 'count', label: 'Số giao dịch', align: 'right', format: 'number' },
+          { key: 'qty', label: 'SL', align: 'right', format: 'number' },
+          { key: 'value', label: 'Giá trị', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const inP = (d: string) => d >= start && d <= end;
+          const debtMoney = inventoryMovements.filter(m => m.movementType === 'issue_to_student' && m.paymentStatus === 'unpaid' && (m.totalAmount || 0) > 0 && inP(m.movementDate));
+          const debtGoods = inventoryMovements.filter(m => m.movementType === 'issue_to_student' && m.paymentStatus === 'paid' && m.issued === false && inP(m.movementDate));
+          return [
+            { type: 'Nợ tiền (đã phát – chưa thu)', count: debtMoney.length, qty: debtMoney.reduce((s, m) => s + m.quantity, 0), value: debtMoney.reduce((s, m) => s + (m.totalAmount || 0), 0) },
+            { type: 'Nợ hàng (đã thu – chờ phát)', count: debtGoods.length, qty: debtGoods.reduce((s, m) => s + m.quantity, 0), value: debtGoods.reduce((s, m) => s + (m.totalAmount || 0), 0) },
+          ];
+        },
+      },
+      // #5 — Sổ chi tiết Nhật ký xuất nhập
+      {
+        id: 'inv_movement_detail',
+        implemented: true,
+        name: 'Sổ chi tiết Nhật ký xuất nhập',
+        description: 'Liệt kê chi tiết từng giao dịch nhập/xuất kho trong kỳ.',
+        type: 'detail',
+        filters: ['dateRange', 'invCategory', 'search'],
+        columns: [
+          { key: 'movementDate', label: 'Ngày', align: 'left', format: 'date' },
+          { key: 'typeLabel', label: 'Loại GD', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'quantity', label: 'SL', align: 'right', format: 'number' },
+          { key: 'totalAmount', label: 'Thành tiền', align: 'right', format: 'currency' },
+          { key: 'partner', label: 'Đối tác', align: 'left', format: 'text' },
+          { key: 'status', label: 'Trạng thái', align: 'left', format: 'text' },
+        ],
+        compute: ({ inventoryMovements = [], inventoryCategories = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const catName = filters.categoryId ? inventoryCategories.find(c => c.id === filters.categoryId)?.name : null;
+          const q = (filters.searchQuery || '').toLowerCase().trim();
+          const typeLabels: Record<string, string> = {
+            opening: 'Tồn đầu kỳ', purchase_in: 'Mua nhập kho', return_in: 'Trả lại kho', issue_to_student: 'Bán học viên',
+            issue_to_staff: 'Cấp nhân sự', internal_use: 'Sử dụng nội bộ', adjustment: 'Kiểm kê điều chỉnh', damage: 'Hỏng hóc', loss: 'Mất mát', transfer: 'Chuyển kho',
+          };
+          return inventoryMovements
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .filter(m => !catName || m.categoryName === catName)
+            .filter(m => !q || `${m.itemName} ${m.studentName} ${m.staffName}`.toLowerCase().includes(q))
+            .sort((a, b) => b.movementDate.localeCompare(a.movementDate))
+            .map(m => ({
+              movementDate: m.movementDate,
+              typeLabel: typeLabels[m.movementType] || m.movementType,
+              itemName: m.itemName,
+              quantity: m.quantity,
+              totalAmount: m.totalAmount || 0,
+              partner: m.studentName ? `HV: ${m.studentName}` : m.staffName ? `NV: ${m.staffName}` : '—',
+              status: m.movementType !== 'issue_to_student' ? '—'
+                : m.paymentStatus === 'unpaid' ? 'Chưa thu tiền'
+                : !m.issued ? 'Đã thu – chờ phát'
+                : 'Đã thu – đã phát',
+            }));
+        },
+      },
+      // #7 — Cảnh báo tồn dưới định mức
+      {
+        id: 'inv_low_stock',
+        implemented: true,
+        name: 'Cảnh báo tồn dưới định mức',
+        description: 'Các mặt hàng có số lượng tồn nhỏ hơn hoặc bằng định mức tối thiểu.',
+        type: 'detail',
+        filters: ['invLocation'],
+        columns: [
+          { key: 'itemCode', label: 'Mã SKU', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'locationName', label: 'Kho', align: 'left', format: 'text' },
+          { key: 'quantityOnHand', label: 'SL tồn', align: 'right', format: 'number' },
+          { key: 'minStockLevel', label: 'Định mức', align: 'right', format: 'number' },
+          { key: 'shortBy', label: 'Thiếu', align: 'right', format: 'number' },
+        ],
+        compute: ({ inventoryStocks = [], filters }) => {
+          return inventoryStocks
+            .filter(s => (!filters.locationId || s.locationId === filters.locationId))
+            .filter(s => s.minStockLevel > 0 && s.quantityOnHand <= s.minStockLevel)
+            .map(s => ({
+              itemCode: s.itemCode, itemName: s.itemName, locationName: s.locationName,
+              quantityOnHand: s.quantityOnHand, minStockLevel: s.minStockLevel,
+              shortBy: Math.max(s.minStockLevel - s.quantityOnHand, 0),
+            }))
+            .sort((a, b) => b.shortBy - a.shortBy);
+        },
+      },
+      // #9 — Vật tư theo học viên
+      {
+        id: 'inv_by_student',
+        implemented: true,
+        name: 'Vật tư bán theo học viên',
+        description: 'Các mặt hàng đã bán cho từng học viên kèm trạng thái thu tiền và phát hàng.',
+        type: 'object',
+        filters: ['student', 'dateRange'],
+        columns: [
+          { key: 'studentName', label: 'Học viên', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'quantity', label: 'SL', align: 'right', format: 'number' },
+          { key: 'totalAmount', label: 'Thành tiền', align: 'right', format: 'currency' },
+          { key: 'payment', label: 'Thu tiền', align: 'left', format: 'text' },
+          { key: 'delivery', label: 'Phát hàng', align: 'left', format: 'text' },
+          { key: 'movementDate', label: 'Ngày', align: 'left', format: 'date' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          return inventoryMovements
+            .filter(m => m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0)
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .filter(m => !filters.studentId || m.studentId === filters.studentId)
+            .sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '') || b.movementDate.localeCompare(a.movementDate))
+            .map(m => ({
+              studentName: m.studentName || '—', itemName: m.itemName, quantity: m.quantity, totalAmount: m.totalAmount || 0,
+              payment: m.paymentStatus === 'paid' ? 'Đã thu' : 'Chưa thu',
+              delivery: m.issued ? 'Đã phát' : 'Chờ phát',
+              movementDate: m.movementDate,
+            }));
+        },
+      },
     ]
   }
 ];

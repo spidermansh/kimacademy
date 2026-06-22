@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { REPORT_GROUPS, ReportDefinition } from '../../shared/business/reports';
-import { formatCurrency, formatDate } from '../../shared/utils';
+import { formatCurrency, formatDate, api } from '../../shared/utils';
 import * as XLSX from 'xlsx-js-style';
 import {
   Search, Calendar, Users, BookOpen, Wallet,
@@ -73,11 +73,60 @@ export default function ReportsDashboard({
     staffId: '',
     classStatus: 'all',
     reconciliationStatus: '',
-    searchQuery: ''
+    searchQuery: '',
+    itemId: '',
+    categoryId: '',
+    locationId: ''
   });
 
   const [appliedFilters, setAppliedFilters] = useState(filters);
   const [reportTime, setReportTime] = useState<string>('');
+
+  // Dữ liệu kho vật tư cho các báo cáo nhóm "grp_inventory" (tự nạp).
+  const [invRaw, setInvRaw] = useState<{ items: any[]; categories: any[]; stocks: any[]; movements: any[]; locations: any[] }>({ items: [], categories: [], stocks: [], movements: [], locations: [] });
+  useEffect(() => {
+    Promise.all([
+      api.getInventoryItems(), api.getInventoryCategories(),
+      api.getInventoryStocks(), api.getInventoryMovements(), api.getInventoryLocations(),
+    ]).then(([items, categories, stocks, movements, locations]) => {
+      setInvRaw({ items, categories, stocks, movements, locations });
+    }).catch(() => { /* phân hệ kho có thể trống */ });
+  }, []);
+
+  // Map dữ liệu kho thô (API) sang shape phẳng cho report engine.
+  const inventoryData = useMemo(() => {
+    const itemMap = new Map(invRaw.items.map((it: any) => [it.id, it]));
+    const catName = (item: any) => item?.category?.name || invRaw.categories.find((c: any) => c.id === item?.categoryId)?.name || 'Khác';
+    const inventoryItems = invRaw.items.map((it: any) => ({
+      id: it.id, code: it.code, name: it.name, unit: it.unit,
+      categoryId: it.categoryId, categoryName: catName(it),
+      minStockLevel: it.minStockLevel || 0, defaultSalePrice: it.defaultSalePrice || 0, defaultCostPrice: it.defaultCostPrice || 0,
+    }));
+    const inventoryStocks = invRaw.stocks.map((s: any) => {
+      const it = itemMap.get(s.itemId);
+      return {
+        itemId: s.itemId, itemCode: it?.code || '', itemName: s.item?.name || it?.name || '', unit: s.item?.unit || it?.unit || '',
+        categoryName: catName(it), locationId: s.locationId, locationName: s.location?.name || '',
+        quantityOnHand: s.quantityOnHand || 0, averageCost: s.averageCost || 0,
+        minStockLevel: it?.minStockLevel || 0, salePrice: it?.defaultSalePrice || 0,
+      };
+    });
+    const inventoryMovements = invRaw.movements.map((m: any) => {
+      const it = itemMap.get(m.itemId);
+      return {
+        id: m.id, movementDate: m.movementDate, movementType: m.movementType,
+        itemId: m.itemId, itemCode: it?.code || '', itemName: m.item?.name || it?.name || '', unit: m.item?.unit || it?.unit || '',
+        categoryName: catName(it),
+        fromLocationName: m.fromLocation?.name || '', toLocationName: m.toLocation?.name || '',
+        quantity: m.quantity || 0, unitCost: m.unitCost || 0, unitSalePrice: m.unitSalePrice || 0, totalAmount: m.totalAmount || 0,
+        studentId: m.relatedStudentId || undefined, studentName: m.relatedStudent?.name || '', staffName: m.relatedStaff?.name || '',
+        paymentStatus: m.paymentStatus, issued: m.issued !== false, paymentDate: m.paymentDate || undefined, paymentMethod: m.paymentMethod || undefined,
+        createdBy: m.createdBy || '',
+      };
+    });
+    const inventoryCategories = invRaw.categories.map((c: any) => ({ id: c.id, name: c.name }));
+    return { inventoryItems, inventoryStocks, inventoryMovements, inventoryCategories };
+  }, [invRaw]);
 
   const activeGroup = useMemo(() => {
     return REPORT_GROUPS.find(g => g.id === selectedGroupId) || REPORT_GROUPS[0];
@@ -139,13 +188,14 @@ export default function ReportsDashboard({
         filters: appliedFilters,
         systemParameters,
         admissionLeads,
-        enrollments
+        enrollments,
+        ...inventoryData
       });
     } catch (err) {
       console.error('Lỗi khi tính toán dữ liệu báo cáo:', err);
       return [];
     }
-  }, [activeReport, students, classes, transactions, attendance, expenses, staff, teachingLogs, advances, salaries, dailyCloses, auditLogs, appliedFilters, systemParameters, admissionLeads]);
+  }, [activeReport, students, classes, transactions, attendance, expenses, staff, teachingLogs, advances, salaries, dailyCloses, auditLogs, appliedFilters, systemParameters, admissionLeads, inventoryData]);
 
   // Totals Row calculation
   const hasTotals = useMemo(() => {
@@ -705,6 +755,38 @@ export default function ReportsDashboard({
                           className="w-full pl-9 pr-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                         />
                       </div>
+                    </div>
+                  )}
+
+                  {activeReport.filters.includes('invCategory') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nhóm vật tư</label>
+                      <select
+                        value={filters.categoryId}
+                        onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="">-- Tất cả nhóm --</option>
+                        {invRaw.categories.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {activeReport.filters.includes('invLocation') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kho lưu trữ</label>
+                      <select
+                        value={filters.locationId}
+                        onChange={e => setFilters(prev => ({ ...prev, locationId: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="">-- Tất cả kho --</option>
+                        {invRaw.locations.map((l: any) => (
+                          <option key={l.id} value={l.id}>{l.name}</option>
+                        ))}
+                      </select>
                     </div>
                   )}
                 </div>
