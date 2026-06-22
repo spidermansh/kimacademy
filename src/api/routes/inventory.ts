@@ -424,6 +424,7 @@ inventoryRouter.post('/inventory/movements/bulk', requireInventoryRole, async (r
     paymentDate,
     movementDate,
     note,
+    issued,
     allowDuplicate
   } = req.body;
 
@@ -454,6 +455,9 @@ inventoryRouter.post('/inventory/movements/bulk', requireInventoryRole, async (r
   const finalPaymentStatus = normalizePaymentStatus(paymentStatus, price > 0);
   const finalPaymentDate = finalPaymentStatus === 'paid' ? (paymentDate || movementDate) : null;
   const finalPaymentMethod = finalPaymentStatus === 'paid' ? (paymentMethod || 'Tiền mặt') : null;
+  // "Đã thu – chưa phát" (nợ hàng) cho bán hàng loạt: chỉ khi đã thu tiền + issued=false.
+  // Khi đó KHÔNG trừ kho / KHÔNG kiểm tra tồn lúc tạo (giống bán đơn lẻ — D9); trừ kho khi gọi /deliver.
+  const finalIssued = !(price > 0 && finalPaymentStatus === 'paid' && issued === false);
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -511,24 +515,27 @@ inventoryRouter.post('/inventory/movements/bulk', requireInventoryRole, async (r
         }
       }
 
-      const stock = await tx.inventoryStock.findUnique({
-        where: {
-          itemId_variantId_locationId: {
-            itemId,
-            variantId: finalVariantId || '',
-            locationId: fromLocationId
+      // Chỉ trừ kho + kiểm tra tồn khi PHÁT hàng ngay (finalIssued). "Đã thu – chưa phát" để dành /deliver.
+      if (finalIssued) {
+        const stock = await tx.inventoryStock.findUnique({
+          where: {
+            itemId_variantId_locationId: {
+              itemId,
+              variantId: finalVariantId || '',
+              locationId: fromLocationId
+            }
           }
+        });
+        const currentQty = stock?.quantityOnHand || 0;
+        if (!stock || currentQty < totalQty) {
+          throw new Error(`INSUFFICIENT_STOCK|Số lượng tồn kho không đủ để xuất hàng loạt. (Hiện còn: ${currentQty} ${item.unit}, cần xuất: ${totalQty} ${item.unit})`);
         }
-      });
-      const currentQty = stock?.quantityOnHand || 0;
-      if (!stock || currentQty < totalQty) {
-        throw new Error(`INSUFFICIENT_STOCK|Số lượng tồn kho không đủ để xuất hàng loạt. (Hiện còn: ${currentQty} ${item.unit}, cần xuất: ${totalQty} ${item.unit})`);
-      }
 
-      await tx.inventoryStock.update({
-        where: { id: stock.id },
-        data: { quantityOnHand: currentQty - totalQty }
-      });
+        await tx.inventoryStock.update({
+          where: { id: stock.id },
+          data: { quantityOnHand: currentQty - totalQty }
+        });
+      }
 
       const batch = await tx.inventorySaleBatch.create({
         data: {
@@ -586,6 +593,8 @@ inventoryRouter.post('/inventory/movements/bulk', requireInventoryRole, async (r
             relatedStudentId: row.studentId,
             relatedRevenueOtherId: revenueOtherId,
             paymentStatus: price > 0 ? finalPaymentStatus : 'not_applicable',
+            issued: finalIssued,
+            deliveredAt: finalIssued ? new Date() : null,
             paymentMethod: finalPaymentMethod,
             paymentDate: finalPaymentDate,
             paidAt: finalPaymentStatus === 'paid' ? new Date() : null,

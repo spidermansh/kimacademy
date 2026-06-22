@@ -318,6 +318,7 @@ export default function InventoryManagement() {
           unitCost: mUnitCost,
           unitSalePrice: mUnitSalePrice,
           paymentStatus: mUnitSalePrice > 0 ? mPaymentStatus : undefined,
+          issued: mUnitSalePrice > 0 ? mIssued : undefined,
           paymentMethod: mPaymentStatus === 'paid' ? mPaymentMethod : undefined,
           paymentDate: mPaymentStatus === 'paid' ? mPaymentDate : undefined,
           note: mNote,
@@ -496,7 +497,8 @@ export default function InventoryManagement() {
     (!mVariantId || stock.variantId === mVariantId)
   );
   const selectedStockQty = selectedStock?.quantityOnHand || 0;
-  const bulkStockShort = mType === 'issue_to_student' && mSaleMode === 'bulk' && bulkTotalQuantity > selectedStockQty;
+  // Tồn thiếu chỉ chặn khi PHÁT hàng ngay (mIssued). "Đã thu – chưa phát" không trừ kho lúc tạo (D9).
+  const bulkStockShort = mType === 'issue_to_student' && mSaleMode === 'bulk' && mIssued && bulkTotalQuantity > selectedStockQty;
   const allBulkStudentsSelected = bulkClassStudents.length > 0 && bulkClassStudents.every(student => mSelectedStudentIds.includes(student.id));
 
   const pendingInventoryPayments = movements.filter(m =>
@@ -1564,7 +1566,7 @@ export default function InventoryManagement() {
                   </p>
                   <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3 space-y-3">
                     <label className="block text-xs font-black text-amber-700 uppercase">Trạng thái thu tiền / phát hàng</label>
-                    <div className={`grid grid-cols-1 ${mSaleMode === 'single' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2`}>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => { setMPaymentStatus('unpaid'); setMIssued(true); }}
@@ -1591,23 +1593,21 @@ export default function InventoryManagement() {
                       >
                         Thu tiền ngay
                       </button>
-                      {mSaleMode === 'single' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMPaymentStatus('paid');
-                            setMIssued(false);
-                            setMPaymentDate(mDate);
-                          }}
-                          className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
-                            mPaymentStatus === 'paid' && !mIssued
-                              ? 'bg-sky-600 text-white border-sky-600'
-                              : 'bg-white text-sky-700 border-sky-200'
-                          }`}
-                        >
-                          Đã thu - chưa phát (nợ hàng)
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMPaymentStatus('paid');
+                          setMIssued(false);
+                          setMPaymentDate(mDate);
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
+                          mPaymentStatus === 'paid' && !mIssued
+                            ? 'bg-sky-600 text-white border-sky-600'
+                            : 'bg-white text-sky-700 border-sky-200'
+                        }`}
+                      >
+                        Đã thu - chưa phát (nợ hàng)
+                      </button>
                     </div>
                     {mPaymentStatus === 'paid' && !mIssued && (
                       <p className="text-[10px] text-sky-600 font-bold">
