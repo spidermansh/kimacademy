@@ -23,28 +23,28 @@
 | Feat | `f64ff41` | Báo cáo kho: nhóm `grp_inventory` 7 báo cáo (GĐ A hạ tầng + B cốt lõi). |
 | Feat | `989627c` | Báo cáo kho GĐ C: 4 báo cáo (Kardex theo mặt hàng, GD chưa hoàn tất, bán theo lớp, theo người thực hiện) + filter `invItem`. Compute thuần, không đổi schema. |
 | Feat | `8dab25d` | Báo cáo kho GĐ D: `InventoryMovement.supplierId` (+FK Supplier, migration THUẦN BỔ SUNG) + báo cáo "Nhập hàng theo nhà cung cấp" + select NCC ở form nhập kho. |
+| Fix | `3a1181e` | Migration `json_columns`/`date_columns` đổi DROP+recreate → `ALTER ... USING` (bảo toàn dữ liệu). Nghiệm chứng reset + diff = No difference. D12 resolved. |
 
 ## Phase đang làm
 - (Không có phase code nào đang dở — working tree sạch.) Đang ở bước **bàn giao tài liệu**.
 
 ## Phase chưa làm
-- **Data-model migration cho PRODUCTION**: viết lại migration đổi kiểu (json/date) thành bảo toàn dữ liệu (hiện đang DROP+recreate — chỉ an toàn với DB rỗng/test). *(Migration GĐ D `add_supplier_to_inventory_movement` đã thuần bổ sung — an toàn, không nằm trong nhóm này.)*
-- **Merge `fix/audit` → `main`** (PR).
+- **Merge `fix/audit` → `main`** (PR) — việc còn lại duy nhất.
 
 ## Bảng trạng thái từng nhóm
 | Nhóm | Trạng thái | Ghi chú |
 |---|---|---|
-| Schema / Database | 🟢 Ổn (test) / 🟠 prod | jsonb + DateTime + tokenVersion + createdById + AuditLog.userId + inventory.issued + inventory.supplierId (FK). 11 migration. ⚠️ migration đổi kiểu json/date DESTRUCTIVE trên prod có dữ liệu (migration supplierId thì an toàn). |
+| Schema / Database | 🟢 Tốt | jsonb + DateTime + tokenVersion + createdById + AuditLog.userId + inventory.issued + inventory.supplierId (FK). 11 migration. ✅ migration đổi kiểu json/date nay bảo toàn dữ liệu (`ALTER ... USING`, D12) — an toàn deploy prod có dữ liệu. |
 | Ledger (sổ cái) | 🟢 Tốt | 1 nguồn sự thật `recalcEnrollmentLedger`; có endpoint + cron đối soát; test `ledger.test.ts` pass. |
 | Inventory (kho) | 🟢 Tốt | Chặn tồn âm, giá vốn BQ, trạng thái issued (đã thu–chưa phát), `/deliver`, filter+Excel. `inventory.test.ts` (18) pass. |
 | Reports (báo cáo) | 🟢 Tốt | Nhóm kho GĐ A+B+C+D (12 báo cáo) xong. Tính client-side. `reports.test.ts` (12) pass; báo cáo kho GĐ C/D nghiệm chứng compute + round-trip (chưa có unit test riêng). |
 | Services / Business | 🟢 Tốt | ledger, dates, json, constants, validate, audit, reports engine. |
 | UI (frontend) | 🟢 Tốt | Reports, Inventory, Sidebar, App cập nhật; HMR. Hợp đồng ngày = chuỗi giữ nguyên. |
 | Tests | 🟢 71/71 pass | 9 file (xem TEST_STATUS.md). DB tests cần PostgreSQL + truncate. |
-| Deployment | 🟠 Cần lưu ý | `DEPLOY.md` có hướng dẫn. CI chạy lint+build+test+migrate deploy. ⚠️ migration đổi kiểu cần xử lý trước khi lên prod có dữ liệu. |
+| Deployment | 🟢 Tốt | `DEPLOY.md` có hướng dẫn. CI chạy lint+build+test+migrate deploy. ✅ migration đổi kiểu json/date đã bảo toàn dữ liệu — `migrate deploy` an toàn cả khi prod có dữ liệu. |
 
 ## Rủi ro còn lại
-1. **Migration đổi kiểu DROP+recreate** → mất dữ liệu nếu deploy lên prod có dữ liệu thật (rủi ro cao nhất).
+1. ~~**Migration đổi kiểu DROP+recreate** → mất dữ liệu~~ ✅ ĐÃ SỬA (`3a1181e`, D12): nay `ALTER ... USING` bảo toàn dữ liệu, an toàn deploy prod.
 2. ~~Báo cáo kho chưa đầy đủ~~ ✅ Đã xong GĐ A→D (12 báo cáo). Còn đề xuất (không bắt buộc): unit test cố định cho báo cáo kho.
 3. `authenticateToken` +1 truy vấn DB/request (perf — chấp nhận được).
 4. zod chưa phủ 100% route.

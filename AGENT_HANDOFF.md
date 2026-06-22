@@ -28,6 +28,7 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 ## 5. Đã hoàn thành trong phiên hiện tại (theo commit, mới → cũ)
 | Commit | Nội dung |
 |---|---|
+| `3a1181e` | **Fix migration bảo toàn dữ liệu (D12)**: `json_columns` + `date_columns` đổi từ DROP+recreate → `ALTER ... USING` (giữ dữ liệu khi deploy prod). |
 | `8dab25d` | **Báo cáo kho — GĐ D**: `InventoryMovement.supplierId` (+FK Supplier, migration thuần bổ sung) + báo cáo "Nhập hàng theo nhà cung cấp" + select NCC ở form nhập kho. |
 | `989627c` | **Báo cáo kho — GĐ C** (4 báo cáo): Thẻ kho Kardex theo mặt hàng · GD chưa hoàn tất · Bán theo lớp · Theo người thực hiện. Thêm control filter `invItem`. |
 | `f64ff41` | **Báo cáo kho vật tư** (nhóm `grp_inventory`, 7 báo cáo) — GĐ A (hạ tầng) + B (báo cáo cốt lõi) |
@@ -82,7 +83,7 @@ Xem chi tiết + lý do trong [DECISIONS.md](DECISIONS.md). Tóm tắt:
 Xem [DECISIONS.md](DECISIONS.md). Nổi bật: lớp ngày trong suốt qua Prisma extension; sổ cái tập trung; jsonb thay JSON-string; JWT thu hồi qua tokenVersion; báo cáo tính **client-side** (FE nạp data rồi gọi `compute`).
 
 ## 10. Lỗi / technical debt còn tồn tại
-- ⚠️ **Migration đổi kiểu (`json_columns`, `date_columns`) ở dạng DROP + tạo lại cột** (vì sinh trên bảng rỗng) → **MẤT DỮ LIỆU nếu `migrate deploy` trên DB prod có dữ liệu thật**. Hiện OK vì data test. **Trước khi deploy prod có dữ liệu**: phải viết tay migration bảo toàn dữ liệu (`ALTER COLUMN ... TYPE jsonb USING col::jsonb` / `TYPE date USING col::date`).
+- ✅ **(ĐÃ SỬA `3a1181e`)** Migration đổi kiểu (`json_columns`, `date_columns`) nay dùng `ALTER COLUMN ... SET DATA TYPE ... USING ...` — **bảo toàn dữ liệu** khi `migrate deploy` lên prod có dữ liệu. Đã nghiệm chứng: `migrate reset` áp lại sạch + `migrate diff` = No difference + test 71/71. Xem DECISIONS D12.
 - Báo cáo kho GĐ C/D chưa làm.
 - zod chưa phủ 100% route (đã phủ các route mutation chính + PUT quan trọng).
 - `authenticateToken` thực hiện 1 truy vấn DB mỗi request (chấp nhận được ở quy mô này).

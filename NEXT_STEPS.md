@@ -7,8 +7,8 @@
 |---|---|---|---|
 | ~~1~~ | ~~**Báo cáo kho GĐ C** (4 báo cáo)~~ ✅ XONG (`989627c`) | Tính năng | Không đổi schema. Đã nghiệm chứng compute. |
 | ~~2~~ | ~~**Báo cáo kho GĐ D** (theo nhà cung cấp)~~ ✅ XONG (`8dab25d`) | Tính năng | `supplierId` + migration thuần bổ sung. Báo cáo kho hoàn tất. |
-| 3 | **Sửa migration đổi kiểu thành bảo toàn dữ liệu** | Hạ tầng | TASK KẾ TIẾP. BẮT BUỘC trước khi deploy prod có dữ liệu thật. |
-| 4 | **Chuẩn bị PR `fix/audit` → `main`** | Quy trình | Đính kèm cảnh báo migration (mục 3). |
+| ~~3~~ | ~~**Sửa migration đổi kiểu thành bảo toàn dữ liệu**~~ ✅ XONG (`3a1181e`) | Hạ tầng | `ALTER ... USING`; nghiệm chứng reset + diff = No difference. |
+| 4 | **Chuẩn bị PR `fix/audit` → `main`** | Quy trình | TASK KẾ TIẾP — việc còn lại duy nhất. Migration nay đã an toàn (không còn cảnh báo phá dữ liệu). |
 
 ---
 
@@ -39,10 +39,17 @@
 
 ---
 
-## TASK KẾ TIẾP — HẠ TẦNG (trước khi deploy prod): Migration bảo toàn dữ liệu
-- Hiện `prisma/migrations/20260621124340_json_columns` và `20260621132559_date_columns` ở dạng **DROP + tạo lại cột** → mất dữ liệu trên DB có sẵn.
-- Khi cần đưa lên prod có dữ liệu thật: viết migration thủ công dùng `ALTER COLUMN ... TYPE jsonb USING col::jsonb` và `TYPE date USING col::date` (hoặc tạo cột tạm → copy → đổi tên).
-- **Không** chạy `migrate deploy` các migration đổi kiểu hiện tại lên prod có dữ liệu (xem DECISIONS D12).
+## ✅ ĐÃ XONG — HẠ TẦNG: Migration bảo toàn dữ liệu (commit `3a1181e`)
+- `20260621124340_json_columns` và `20260621132559_date_columns` đã đổi từ DROP+recreate sang `ALTER COLUMN ... SET DATA TYPE ... USING ...` → **giữ nguyên dữ liệu** khi `migrate deploy` lên DB có sẵn. Chi tiết kỹ thuật & quy ước USING: xem **DECISIONS D12**.
+- Nghiệm chứng: test biểu thức USING trên giá trị biên (rollback); `migrate reset` áp lại toàn bộ sạch; `migrate diff` (live DB ↔ schema.prisma) = **No difference**; `tsc`/`npm test` 71/71/`build` xanh.
+- `migrate deploy` các migration này lên prod có dữ liệu nay **AN TOÀN** (không còn phá dữ liệu).
+
+---
+
+## TASK KẾ TIẾP — QUY TRÌNH: Chuẩn bị PR `fix/audit` → `main`
+- Toàn bộ audit Phase 0–3 + 2 fix + kho (issued/deliver) + báo cáo kho GĐ A→D + fix migration bảo toàn dữ liệu đã xong; working tree sạch (chờ push).
+- Mở PR `fix/audit` → `main`; mô tả tóm tắt các nhóm thay đổi. Migration nay an toàn nên **không còn cảnh báo phá dữ liệu** bắt buộc, nhưng nên ghi chú: chạy `prisma migrate deploy` (KHÔNG `db push`) khi deploy.
+- Chưa push `fix/audit` lên `origin` — cần xác nhận của chủ dự án trước khi push/mở PR.
 
 ---
 

@@ -11,6 +11,8 @@
 
 → Toàn bộ xanh. Không có test fail tại thời điểm bàn giao.
 
+> **Migration bảo toàn dữ liệu (`3a1181e`, D12):** sau khi sửa `json_columns`/`date_columns` sang `ALTER ... USING`, đã nghiệm chứng: (1) biểu thức USING test trên giá trị biên `''`/`NULL`/ISO qua transaction rollback; (2) `npx prisma migrate reset` áp lại toàn bộ 11 migration sạch; (3) `npx prisma migrate diff` (live DB ↔ `schema.prisma`) = **No difference**; (4) `tsc`/`npm test` 71/71/`build` đều xanh trên schema mới. **Lưu ý:** `migrate reset` XÓA toàn bộ DB — chỉ chạy trên DB dev/test (đã re-seed sau đó).
+
 ## Lệnh test chính xác
 ```bash
 npm test                                   # = vitest run --fileParallelism=false  (CHẠY TUẦN TỰ, BẮT BUỘC vì test dùng DB chung)

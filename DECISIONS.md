@@ -77,7 +77,12 @@
 - **File:** `src/shared/business/reports.ts` (REPORT_GROUPS + compute), `src/ui/pages/ReportsDashboard.tsx`, `src/api/routes/reports.ts`.
 - **Cấm:** Đặt dữ liệu nặng/bí mật vào compute mà không cân nhắc (chạy ở client). Thêm báo cáo dùng dữ liệu mới phải nạp dữ liệu đó vào params ở CẢ FE (ReportsDashboard) lẫn route nếu cần server-side.
 
-## D12. Migration đổi kiểu hiện tại là DROP+recreate (chỉ an toàn DB rỗng)
-- **Quyết định (tạm):** Migration `json_columns`, `date_columns` sinh tự động ở dạng DROP cột + tạo lại (vì chạy trên bảng test rỗng).
-- **Lý do:** Tiện cho môi trường dev/test (dữ liệu test).
-- **Cấm:** Chạy `prisma migrate deploy` lên DB PRODUCTION có dữ liệu thật với các migration này — **sẽ mất dữ liệu**. Phải thay bằng migration `ALTER ... USING ...::date/::jsonb` trước (xem NEXT_STEPS).
+## D12. Migration đổi kiểu = BẢO TOÀN DỮ LIỆU (ALTER ... USING) — ĐÃ SỬA
+- **Quyết định:** Migration `json_columns` và `date_columns` đã được **sửa tay** từ DROP+recreate (mất dữ liệu) sang `ALTER COLUMN ... SET DATA TYPE ... USING ...` → **giữ nguyên dữ liệu** khi `migrate deploy` lên DB đã có dữ liệu. (Trước đây tự sinh ở dạng DROP+tạo lại vì chạy trên bảng test rỗng.)
+- **Cách làm:**
+  - JSONB: `USING NULLIF(col,'')::jsonb` (nullable) / `USING COALESCE(NULLIF(col,'')::jsonb, '[]'::jsonb)` (NOT NULL có default; dùng DROP DEFAULT → SET TYPE → SET DEFAULT).
+  - DATE/TIMESTAMP: `USING btrim(col)::date` (NOT NULL) / `USING NULLIF(btrim(col),'')::date` (nullable); `::timestamp` cho cột timestamp. `::date` nhận cả chuỗi ISO.
+  - Cột không bị DROP nên index phụ thuộc tự rebuild → `CREATE INDEX IF NOT EXISTS` (tránh trùng index đã có từ `init`/`bulk_sale_batch`).
+- **Nghiệm chứng:** biểu thức USING test trên giá trị biên (rollback); `migrate reset` áp lại toàn bộ sạch; `migrate diff` (live DB ↔ schema.prisma) = **No difference**; `tsc`/`npm test` 71/71/`build` xanh.
+- **Lưu ý:** `convertedat_date` (`SET DATA TYPE DATE`, timestamp→date implicit) và `inventory_issued` (ADD COLUMN) vốn đã an toàn. Migration GĐ D `add_supplier_to_inventory_movement` cũng thuần bổ sung.
+- **Cấm:** Quay lại dạng DROP+recreate cho migration đổi kiểu; với migration đổi kiểu mới trên cột có thể có dữ liệu phải dùng `ALTER ... USING` (không DROP cột).
