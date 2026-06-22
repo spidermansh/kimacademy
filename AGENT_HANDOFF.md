@@ -28,6 +28,7 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 ## 5. Đã hoàn thành trong phiên hiện tại (theo commit, mới → cũ)
 | Commit | Nội dung |
 |---|---|
+| `438e67f` | **UI: ô chọn học viên có tìm kiếm** (`SearchableSelect`) — thay 2 select phẳng (Kho bán đơn lẻ, Báo cáo lọc HV). Component tái dùng `src/ui/components/ui/SearchableSelect.tsx`. |
 | `8141b99` | **Kho: bán hàng loạt hỗ trợ "Đã thu – chưa phát"** (`issued=false`) — đồng bộ với bán đơn lẻ (D9): không trừ kho lúc tạo, trừ khi `/deliver`. |
 | `29aa300` | **Rà soát báo cáo — P3 + P3-bis**: gộp "sắp/hết buổi"; thêm Sinh nhật + Học thử; phân biệt 2 báo cáo "chờ xếp lớp"; tab đếm số + spinner kho. **Tách "Tài chính tháng" → Dòng tiền (net) + Doanh thu thực (gross, D13)**; thêm earned theo lớp/ngày. |
 | `e7ef5b1` | **Rà soát báo cáo — P2** (chuẩn hoá): literal phân loại → hằng số (D2/D3, thêm online/studyType); `tuition_payment_history` loại "Chuyển số dư"; ghi chú lương gross/net; Export Excel ghi bộ lọc kho + "Người xuất" theo người đăng nhập. |
