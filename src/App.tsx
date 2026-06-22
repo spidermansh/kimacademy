@@ -343,9 +343,14 @@ function AppInner() {
 
   const submitTransaction = async (data: any) => {
     try {
-      const newTransaction = await api.createTransaction(data);
-      setTransactions(prev => [newTransaction, ...prev]);
-      const studentData = await api.getStudents();
+      await api.createTransaction(data);
+      // Lấy lại danh sách đã format (kèm tên học viên + lớp) thay vì chèn bản ghi
+      // thô từ POST — tránh dòng mới bị trống tên/lớp cho tới khi refresh.
+      const [txData, studentData] = await Promise.all([
+        api.getTransactions(),
+        api.getStudents(),
+      ]);
+      setTransactions(txData);
       setStudents(studentData.map((s: any) => populateStudentEnrollment(s, enrollments)));
 
       if (data.revenueCategory === 'Học phí offline') {

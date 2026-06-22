@@ -24,8 +24,10 @@ financeRouter.get('/transactions', async (req, res) => {
       include: {
         student: {
           include: {
+            // Lấy TẤT CẢ enrollment (không chỉ active) để resolve đúng lớp của
+            // giao dịch — học viên có thể đã chuyển/đóng lớp nhưng giao dịch vẫn
+            // thuộc lớp cũ.
             enrollments: {
-              where: { isActive: true },
               include: { class: true }
             }
           }
@@ -38,7 +40,6 @@ financeRouter.get('/transactions', async (req, res) => {
         student: {
           include: {
             enrollments: {
-              where: { isActive: true },
               include: { class: true }
             }
           }
@@ -48,14 +49,18 @@ financeRouter.get('/transactions', async (req, res) => {
 
     // Format tuition transactions
     const formattedTuition = tuitionTx.map(t => {
-      const activeEnroll = t.student.enrollments[0];
+      // Ưu tiên lớp của ĐÚNG enrollment giao dịch, rồi tới lớp đang học, rồi lớp bất kỳ.
+      const enroll =
+        t.student.enrollments.find(e => e.id === t.enrollmentId) ||
+        t.student.enrollments.find(e => e.isActive) ||
+        t.student.enrollments[0];
       return {
         id: t.id,
         createdAt: t.createdAt.toISOString(),
         paymentDate: t.paymentDate,
         studentId: t.studentId,
         studentName: t.student.name,
-        className: activeEnroll?.class?.name || '',
+        className: enroll?.class?.name || '',
         amount: t.amount,
         paymentMethod: t.paymentMethod,
         revenueCategory: REVENUE_CATEGORY_TUITION_OFFLINE,
@@ -69,7 +74,7 @@ financeRouter.get('/transactions', async (req, res) => {
 
     // Format other revenue
     const formattedOther = otherRev.map(t => {
-      const activeEnroll = t.student?.enrollments[0];
+      const activeEnroll = t.student?.enrollments.find(e => e.isActive) || t.student?.enrollments[0];
       return {
         id: t.id,
         createdAt: t.createdAt.toISOString(),
