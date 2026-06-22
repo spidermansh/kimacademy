@@ -24,6 +24,7 @@
 | Feat | `989627c` | Báo cáo kho GĐ C: 4 báo cáo (Kardex theo mặt hàng, GD chưa hoàn tất, bán theo lớp, theo người thực hiện) + filter `invItem`. Compute thuần, không đổi schema. |
 | Feat | `8dab25d` | Báo cáo kho GĐ D: `InventoryMovement.supplierId` (+FK Supplier, migration THUẦN BỔ SUNG) + báo cáo "Nhập hàng theo nhà cung cấp" + select NCC ở form nhập kho. |
 | Fix | `3a1181e` | Migration `json_columns`/`date_columns` đổi DROP+recreate → `ALTER ... USING` (bảo toàn dữ liệu). Nghiệm chứng reset + diff = No difference. D12 resolved. |
+| Fix | `ac09b0a` | Rà soát báo cáo P1: Tài chính P&L truyền `enrollments`; "vắng nhiều" bỏ excused; "chờ xếp lớp" loại HV nghỉ; cờ cột `noTotal` (bỏ tổng %/lũy kế). |
 
 ## Phase đang làm
 - (Không có phase code nào đang dở — working tree sạch.) Đang ở bước **bàn giao tài liệu**.

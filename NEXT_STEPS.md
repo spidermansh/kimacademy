@@ -8,7 +8,8 @@
 | ~~1~~ | ~~**Báo cáo kho GĐ C** (4 báo cáo)~~ ✅ XONG (`989627c`) | Tính năng | Không đổi schema. Đã nghiệm chứng compute. |
 | ~~2~~ | ~~**Báo cáo kho GĐ D** (theo nhà cung cấp)~~ ✅ XONG (`8dab25d`) | Tính năng | `supplierId` + migration thuần bổ sung. Báo cáo kho hoàn tất. |
 | ~~3~~ | ~~**Sửa migration đổi kiểu thành bảo toàn dữ liệu**~~ ✅ XONG (`3a1181e`) | Hạ tầng | `ALTER ... USING`; nghiệm chứng reset + diff = No difference. |
-| 4 | **Chuẩn bị PR `fix/audit` → `main`** | Quy trình | TASK KẾ TIẾP — việc còn lại duy nhất. Migration nay đã an toàn (không còn cảnh báo phá dữ liệu). |
+| 4 | **Chuẩn bị PR `fix/audit` → `main`** | Quy trình | Migration nay đã an toàn (không còn cảnh báo phá dữ liệu). |
+| 5 | **Rà soát phân hệ báo cáo (P1 ✅ / P2 / P3)** | Chất lượng | P1 xong (`ac09b0a`). P2/P3 chờ duyệt — xem mục "RÀ SOÁT PHÂN HỆ BÁO CÁO" bên dưới. |
 
 ---
 
@@ -50,6 +51,31 @@
 - Toàn bộ audit Phase 0–3 + 2 fix + kho (issued/deliver) + báo cáo kho GĐ A→D + fix migration bảo toàn dữ liệu đã xong; working tree sạch (chờ push).
 - Mở PR `fix/audit` → `main`; mô tả tóm tắt các nhóm thay đổi. Migration nay an toàn nên **không còn cảnh báo phá dữ liệu** bắt buộc, nhưng nên ghi chú: chạy `prisma migrate deploy` (KHÔNG `db push`) khi deploy.
 - Chưa push `fix/audit` lên `origin` — cần xác nhận của chủ dự án trước khi push/mở PR.
+
+---
+
+## RÀ SOÁT PHÂN HỆ BÁO CÁO (9 nhóm / 59 báo cáo)
+
+> Rà soát toàn bộ engine báo cáo (`src/shared/business/reports.ts`) + giao diện (`ReportsDashboard.tsx`) + xuất Excel. Tất cả hàm thuần client-side (D11), không đổi schema.
+
+**✅ P1 — Sửa lỗi cho kết quả sai (XONG, commit `ac09b0a`):**
+1. Tài chính (`pnl_monthly_summary`, `profit_earned_object`, `profit_cash_object`) truyền `enrollments` → P&L khớp số với "Tài chính tháng" (Tổng quan).
+2. `student_absent_frequent`: chỉ tính vắng KHÔNG phép liên tục (bỏ `excused`).
+3. `student_waiting_class_detail`: loại HV `left`/`suspended`, không dựa `className` rỗng.
+4. Cờ cột `noTotal` → dòng TỔNG CỘNG (web + Excel) bỏ qua cột %/lũy kế (rateValue, runningPaid/Remaining, Tồn lũy kế Kardex).
+
+**⏳ P2 — Nhất quán & chuẩn hoá (chờ duyệt):**
+5. Thống nhất cơ sở lương gross/net giữa Tổng quan và Tài chính (hoặc ghi chú rõ).
+6. Thay literal `'Học phí offline'`/`'Chuyển số dư'`/`'Học phí online'` bằng hằng số `isTuitionRevenue`/`isInternalTransfer`/`REVENUE_CATEGORY_*` (D2/D3).
+7. `tuition_payment_history` loại "Chuyển số dư".
+8. Export Excel: ghi bộ lọc kho (Mặt hàng/Nhóm/Kho) vào sheet Thông tin; "Người xuất" theo người đăng nhập.
+
+**⏳ P3 — Trùng lặp / thiếu / giao diện (chờ duyệt):**
+9. Gộp HV "sắp hết buổi" + "hết buổi"; xử lý trùng "chờ xếp lớp" (HV vs Tuyển sinh).
+10. Thêm BC Học viên: "Sinh nhật học viên", "Học viên học thử (trial)".
+11. Giao diện: số lượng BC trên mỗi tab + spinner tải dữ liệu kho; (tuỳ chọn) bỏ 1 nút Excel, sửa ghi chú tài chính theo cờ.
+
+**Cần xác minh:** `audit_logs_detail` đọc `l.details` — đối chiếu shape thật của AuditLog (lưu `oldValue/newValue` jsonb), kẻo cột "Chi tiết" luôn ra "—".
 
 ---
 
