@@ -789,6 +789,22 @@ export default function ReportsDashboard({
                       </select>
                     </div>
                   )}
+
+                  {activeReport.filters.includes('invItem') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Mặt hàng</label>
+                      <select
+                        value={filters.itemId}
+                        onChange={e => setFilters(prev => ({ ...prev, itemId: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="">-- Chọn mặt hàng --</option>
+                        {invRaw.items.map((it: any) => (
+                          <option key={it.id} value={it.id}>{it.code ? `${it.code} - ` : ''}{it.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

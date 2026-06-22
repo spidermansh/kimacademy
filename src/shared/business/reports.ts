@@ -2552,6 +2552,172 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             }));
         },
       },
+      // #C1 — Thẻ kho (Kardex) theo mặt hàng
+      {
+        id: 'inv_kardex',
+        implemented: true,
+        name: 'Thẻ kho (Kardex) theo mặt hàng',
+        description: 'Chọn một mặt hàng để xem từng dòng nhập/xuất kèm tồn lũy kế trong kỳ.',
+        type: 'detail',
+        filters: ['invItem', 'dateRange'],
+        columns: [
+          { key: 'movementDate', label: 'Ngày', align: 'left', format: 'date' },
+          { key: 'typeLabel', label: 'Loại GD', align: 'left', format: 'text' },
+          { key: 'partner', label: 'Diễn giải', align: 'left', format: 'text' },
+          { key: 'inQty', label: 'Nhập', align: 'right', format: 'number' },
+          { key: 'outQty', label: 'Xuất', align: 'right', format: 'number' },
+          { key: 'balance', label: 'Tồn lũy kế', align: 'right', format: 'number' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          if (!filters.itemId) return [];
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const typeLabels: Record<string, string> = {
+            opening: 'Tồn đầu kỳ', purchase_in: 'Mua nhập kho', return_in: 'Trả lại kho', issue_to_student: 'Bán học viên',
+            issue_to_staff: 'Cấp nhân sự', internal_use: 'Sử dụng nội bộ', adjustment: 'Kiểm kê điều chỉnh', damage: 'Hỏng hóc', loss: 'Mất mát', transfer: 'Chuyển kho',
+          };
+          // Cùng quy ước delta như báo cáo Nhập–Xuất–Tồn: issue_to_student chờ phát (issued=false) chưa trừ kho.
+          const delta = (m: any) => {
+            if (m.movementType === 'issue_to_student' && m.issued === false) return 0;
+            return (m.toLocationName ? m.quantity : 0) - (m.fromLocationName ? m.quantity : 0);
+          };
+          const mine = inventoryMovements.filter(m => m.itemId === filters.itemId);
+          let opening = 0;
+          mine.forEach(m => { if (m.movementDate < start) opening += delta(m); });
+          let balance = opening;
+          const rows: any[] = [{
+            movementDate: filters.startDate || '', typeLabel: 'Tồn đầu kỳ', partner: '—',
+            inQty: 0, outQty: 0, balance: opening,
+          }];
+          mine
+            .filter(m => m.movementDate >= start && m.movementDate <= end && delta(m) !== 0)
+            .sort((a, b) => a.movementDate.localeCompare(b.movementDate))
+            .forEach(m => {
+              const d = delta(m);
+              balance += d;
+              rows.push({
+                movementDate: m.movementDate,
+                typeLabel: typeLabels[m.movementType] || m.movementType,
+                partner: m.studentName ? `HV: ${m.studentName}` : m.staffName ? `NV: ${m.staffName}`
+                  : (m.fromLocationName && m.toLocationName ? `${m.fromLocationName} → ${m.toLocationName}` : '—'),
+                inQty: d > 0 ? d : 0,
+                outQty: d < 0 ? -d : 0,
+                balance,
+              });
+            });
+          return rows;
+        },
+      },
+      // #C2 — Giao dịch kho chưa hoàn tất
+      {
+        id: 'inv_incomplete',
+        implemented: true,
+        name: 'Giao dịch kho chưa hoàn tất',
+        description: 'Các giao dịch bán học viên còn dang dở: chưa thu tiền hoặc đã thu nhưng chờ phát hàng.',
+        type: 'detail',
+        filters: ['dateRange'],
+        columns: [
+          { key: 'movementDate', label: 'Ngày', align: 'left', format: 'date' },
+          { key: 'studentName', label: 'Học viên', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'quantity', label: 'SL', align: 'right', format: 'number' },
+          { key: 'totalAmount', label: 'Thành tiền', align: 'right', format: 'currency' },
+          { key: 'payment', label: 'Thu tiền', align: 'left', format: 'text' },
+          { key: 'delivery', label: 'Phát hàng', align: 'left', format: 'text' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          return inventoryMovements
+            .filter(m => m.movementType === 'issue_to_student')
+            .filter(m => m.paymentStatus === 'unpaid' || m.issued === false)
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .sort((a, b) => b.movementDate.localeCompare(a.movementDate))
+            .map(m => ({
+              movementDate: m.movementDate,
+              studentName: m.studentName || '—',
+              itemName: m.itemName,
+              quantity: m.quantity,
+              totalAmount: m.totalAmount || 0,
+              payment: m.paymentStatus === 'paid' ? 'Đã thu' : 'Chưa thu',
+              delivery: m.issued ? 'Đã phát' : 'Chờ phát',
+            }));
+        },
+      },
+      // #C3 — Bán vật tư theo lớp
+      {
+        id: 'inv_sales_by_class',
+        implemented: true,
+        name: 'Bán vật tư theo lớp',
+        description: 'Tổng hợp số lượng và doanh thu vật tư bán cho học viên, gom theo lớp đang học.',
+        type: 'object',
+        filters: ['class', 'dateRange'],
+        columns: [
+          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
+          { key: 'count', label: 'Số giao dịch', align: 'right', format: 'number' },
+          { key: 'qty', label: 'SL bán', align: 'right', format: 'number' },
+          { key: 'revenue', label: 'Doanh thu', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], students = [], enrollments = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          // Lớp của học viên: ưu tiên enrollment active đầu tiên, fallback className hồ sơ.
+          const classOf = (studentId?: string) => {
+            if (!studentId) return 'Chưa xếp lớp';
+            const active = enrollments.filter(e => e.studentId === studentId && e.isActive);
+            if (active.length > 0) return active[0].className;
+            const stu = students.find(s => s.id === studentId);
+            return stu?.className || 'Chưa xếp lớp';
+          };
+          const byClass: Record<string, any> = {};
+          inventoryMovements
+            .filter(m => m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0)
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .forEach(m => {
+              const cls = classOf(m.studentId);
+              if (filters.classId && cls !== filters.classId) return;
+              byClass[cls] = byClass[cls] || { className: cls, count: 0, qty: 0, revenue: 0 };
+              byClass[cls].count += 1;
+              byClass[cls].qty += m.quantity;
+              byClass[cls].revenue += m.totalAmount || 0;
+            });
+          return Object.values(byClass).sort((a: any, b: any) => b.revenue - a.revenue);
+        },
+      },
+      // #C4 — Giao dịch kho theo người thực hiện
+      {
+        id: 'inv_by_staff',
+        implemented: true,
+        name: 'Giao dịch kho theo người thực hiện',
+        description: 'Tổng hợp số giao dịch kho và doanh thu bán theo người nhập liệu (createdBy). Lọc theo tên người thực hiện.',
+        type: 'object',
+        filters: ['search', 'dateRange'],
+        columns: [
+          { key: 'performer', label: 'Người thực hiện', align: 'left', format: 'text' },
+          { key: 'count', label: 'Số giao dịch', align: 'right', format: 'number' },
+          { key: 'saleCount', label: 'GD bán HV', align: 'right', format: 'number' },
+          { key: 'saleRevenue', label: 'Doanh thu bán', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const q = (filters.searchQuery || '').toLowerCase().trim();
+          const byUser: Record<string, any> = {};
+          inventoryMovements
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .forEach(m => {
+              const who = m.createdBy || '(không rõ)';
+              if (q && !who.toLowerCase().includes(q)) return;
+              byUser[who] = byUser[who] || { performer: who, count: 0, saleCount: 0, saleRevenue: 0 };
+              byUser[who].count += 1;
+              if (m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0) {
+                byUser[who].saleCount += 1;
+                byUser[who].saleRevenue += m.totalAmount || 0;
+              }
+            });
+          return Object.values(byUser).sort((a: any, b: any) => b.count - a.count);
+        },
+      },
     ]
   }
 ];
