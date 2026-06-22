@@ -25,6 +25,7 @@
 | Feat | `8dab25d` | Báo cáo kho GĐ D: `InventoryMovement.supplierId` (+FK Supplier, migration THUẦN BỔ SUNG) + báo cáo "Nhập hàng theo nhà cung cấp" + select NCC ở form nhập kho. |
 | Fix | `3a1181e` | Migration `json_columns`/`date_columns` đổi DROP+recreate → `ALTER ... USING` (bảo toàn dữ liệu). Nghiệm chứng reset + diff = No difference. D12 resolved. |
 | Fix | `ac09b0a` | Rà soát báo cáo P1: Tài chính P&L truyền `enrollments`; "vắng nhiều" bỏ excused; "chờ xếp lớp" loại HV nghỉ; cờ cột `noTotal` (bỏ tổng %/lũy kế). |
+| Refactor | `e7ef5b1` | Rà soát báo cáo P2: literal phân loại → hằng số (D2/D3); `tuition_payment_history` loại "Chuyển số dư"; ghi chú lương gross/net; Export Excel ghi bộ lọc kho + người xuất. |
 
 ## Phase đang làm
 - (Không có phase code nào đang dở — working tree sạch.) Đang ở bước **bàn giao tài liệu**.

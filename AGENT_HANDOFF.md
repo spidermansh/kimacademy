@@ -28,6 +28,7 @@ Dự án đang trong **đợt rà soát & gia cố nhiều giai đoạn (audit)*
 ## 5. Đã hoàn thành trong phiên hiện tại (theo commit, mới → cũ)
 | Commit | Nội dung |
 |---|---|
+| `e7ef5b1` | **Rà soát báo cáo — P2** (chuẩn hoá): literal phân loại → hằng số (D2/D3, thêm online/studyType); `tuition_payment_history` loại "Chuyển số dư"; ghi chú lương gross/net; Export Excel ghi bộ lọc kho + "Người xuất" theo người đăng nhập. |
 | `ac09b0a` | **Rà soát báo cáo — P1** (sửa lỗi): Tài chính P&L truyền `enrollments` (khớp số Tổng quan); "vắng nhiều" bỏ vắng có phép; "chờ xếp lớp" loại HV đã nghỉ; thêm cờ cột `noTotal` (bỏ tổng cột %/lũy kế, web+Excel). |
 | `3a1181e` | **Fix migration bảo toàn dữ liệu (D12)**: `json_columns` + `date_columns` đổi từ DROP+recreate → `ALTER ... USING` (giữ dữ liệu khi deploy prod). |
 | `8dab25d` | **Báo cáo kho — GĐ D**: `InventoryMovement.supplierId` (+FK Supplier, migration thuần bổ sung) + báo cáo "Nhập hàng theo nhà cung cấp" + select NCC ở form nhập kho. |

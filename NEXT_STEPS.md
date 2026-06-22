@@ -9,7 +9,7 @@
 | ~~2~~ | ~~**Báo cáo kho GĐ D** (theo nhà cung cấp)~~ ✅ XONG (`8dab25d`) | Tính năng | `supplierId` + migration thuần bổ sung. Báo cáo kho hoàn tất. |
 | ~~3~~ | ~~**Sửa migration đổi kiểu thành bảo toàn dữ liệu**~~ ✅ XONG (`3a1181e`) | Hạ tầng | `ALTER ... USING`; nghiệm chứng reset + diff = No difference. |
 | 4 | **Chuẩn bị PR `fix/audit` → `main`** | Quy trình | Migration nay đã an toàn (không còn cảnh báo phá dữ liệu). |
-| 5 | **Rà soát phân hệ báo cáo (P1 ✅ / P2 / P3)** | Chất lượng | P1 xong (`ac09b0a`). P2/P3 chờ duyệt — xem mục "RÀ SOÁT PHÂN HỆ BÁO CÁO" bên dưới. |
+| 5 | **Rà soát phân hệ báo cáo (P1 ✅ / P2 ✅ / P3)** | Chất lượng | P1 (`ac09b0a`) + P2 (`e7ef5b1`) xong. P3 chờ duyệt — xem mục "RÀ SOÁT PHÂN HỆ BÁO CÁO" bên dưới. |
 
 ---
 
@@ -64,11 +64,11 @@
 3. `student_waiting_class_detail`: loại HV `left`/`suspended`, không dựa `className` rỗng.
 4. Cờ cột `noTotal` → dòng TỔNG CỘNG (web + Excel) bỏ qua cột %/lũy kế (rateValue, runningPaid/Remaining, Tồn lũy kế Kardex).
 
-**⏳ P2 — Nhất quán & chuẩn hoá (chờ duyệt):**
-5. Thống nhất cơ sở lương gross/net giữa Tổng quan và Tài chính (hoặc ghi chú rõ).
-6. Thay literal `'Học phí offline'`/`'Chuyển số dư'`/`'Học phí online'` bằng hằng số `isTuitionRevenue`/`isInternalTransfer`/`REVENUE_CATEGORY_*` (D2/D3).
-7. `tuition_payment_history` loại "Chuyển số dư".
-8. Export Excel: ghi bộ lọc kho (Mặt hàng/Nhóm/Kho) vào sheet Thông tin; "Người xuất" theo người đăng nhập.
+**✅ P2 — Nhất quán & chuẩn hoá (XONG, commit `e7ef5b1`):**
+5. Cơ sở lương: GHI CHÚ rõ P&L=gross (accrual) vs Tổng quan=net (cash) — khác biệt đúng bản chất, không đổi số. *(Còn để ngỏ cho chủ dự án: có muốn center_finance_summary "earned profit" dùng gross thay net không — quyết định kế toán.)*
+6. Đã thay literal phân loại bằng hằng số `isTuitionRevenue`/`isInternalTransfer`/`isOnlineTuition`/`isOnlineStudy` (thêm `REVENUE_CATEGORY_TUITION_ONLINE`/`STUDY_TYPE_ONLINE` vào constants.ts).
+7. `tuition_payment_history` đã loại "Chuyển số dư".
+8. Export Excel: đã ghi bộ lọc kho (Mặt hàng/Nhóm/Kho) vào sheet Thông tin; "Người xuất" theo `auth.getUser()`.
 
 **⏳ P3 — Trùng lặp / thiếu / giao diện (chờ duyệt):**
 9. Gộp HV "sắp hết buổi" + "hết buổi"; xử lý trùng "chờ xếp lớp" (HV vs Tuyển sinh).
