@@ -1,6 +1,7 @@
 import { Student, Transaction, AttendanceRecord, Class, StaffMember, TeachingLog, SalaryAdvance, MonthlySalary, Expense, DailyCloseRecord, SystemParameter, AdmissionLead, Enrollment } from '../types';
 import { getFeeAtDate, computeTuitionSummary, computeRevenueSummary, computeTuitionCost } from './tuition';
 import { formatDateKey, formatDate } from '../utils';
+import { isTuitionRevenue, isInternalTransfer, isOnlineTuition, isOnlineStudy } from '../constants';
 
 // ===== Kho vật tư (Inventory) — các shape phẳng cho report engine =====
 export interface InventoryItemRow {
@@ -143,7 +144,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           
           // Doanh thu dòng tiền (Cash Collected)
           const totalIncome = transactions
-            .filter(t => t.paymentDate?.startsWith(m) && t.revenueCategory !== 'Học phí online' && t.studyType !== 'Online' && t.paymentMethod !== 'Chuyển số dư')
+            .filter(t => t.paymentDate?.startsWith(m) && !isOnlineTuition(t.revenueCategory) && !isOnlineStudy(t.studyType) && !isInternalTransfer(t.paymentMethod))
             .reduce((sum, t) => sum + t.amount, 0);
 
           // Chi phí vận hành
@@ -247,8 +248,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               const classCollected = transactions
                 .filter(t =>
                   t.studentId === s.id &&
-                  t.revenueCategory === 'Học phí offline' &&
-                  t.studyType !== 'Online' &&
+                  isTuitionRevenue(t.revenueCategory) &&
+                  !isOnlineStudy(t.studyType) &&
                   (t.className === clsName || (clsName === primaryClass && (!t.className || !activeClassesOfStudent.includes(t.className))))
                 )
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -912,8 +913,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           // 1. Get transactions (Học phí offline)
           const studTxs = transactions.filter(t => 
             t.studentId === targetStud && 
-            t.revenueCategory === 'Học phí offline' && 
-            t.studyType !== 'Online'
+            isTuitionRevenue(t.revenueCategory) && 
+            !isOnlineStudy(t.studyType)
           );
 
           // 2. Get attendance records
@@ -1161,8 +1162,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ transactions, filters }) => {
           return transactions
             .filter(t => {
-              if (t.revenueCategory !== 'Học phí offline' || t.studyType === 'Online') return false;
-              if (t.paymentMethod === 'Chuyển số dư') return false; // Loại bỏ các khoản chuyển đổi số dư nội bộ
+              if (!isTuitionRevenue(t.revenueCategory) || isOnlineStudy(t.studyType)) return false;
+              if (isInternalTransfer(t.paymentMethod)) return false; // Loại bỏ các khoản chuyển đổi số dư nội bộ
               if (filters.startDate && t.paymentDate < filters.startDate) return false;
               if (filters.endDate && t.paymentDate > filters.endDate) return false;
               if (filters.paymentMethod && t.paymentMethod !== filters.paymentMethod) return false;
@@ -1280,7 +1281,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           const targetStud = filters.studentId;
           if (!targetStud) return [];
           return transactions
-            .filter(t => t.studentId === targetStud && t.revenueCategory === 'Học phí offline')
+            .filter(t => t.studentId === targetStud && isTuitionRevenue(t.revenueCategory) && !isInternalTransfer(t.paymentMethod))
             .map(t => ({
               date: t.paymentDate,
               term: t.term || '—',
@@ -1367,8 +1368,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               const classCollected = transactions
                 .filter(t =>
                   t.studentId === s.id &&
-                  t.revenueCategory === 'Học phí offline' &&
-                  t.studyType !== 'Online' &&
+                  isTuitionRevenue(t.revenueCategory) &&
+                  !isOnlineStudy(t.studyType) &&
                   (t.className === clsName || (clsName === primaryClass && (!t.className || !activeClassesOfStudent.includes(t.className))))
                 )
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -1455,6 +1456,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           const totalRevenue = revSummary.totalEarnedRevenueInPeriod;
 
           const opExpense = expenses.filter(e => e.date?.startsWith(m)).reduce((sum, e) => sum + e.amount, 0);
+          // P&L (accrual) dùng lương GROSS = chi phí phát sinh. Khác "Tài chính tháng" (Tổng quan) dùng
+          // netSalary = dòng tiền thực chi → hai báo cáo có thể lệch ở phần lương, đúng bản chất cash vs accrual.
           const payroll = salaries.filter(s => s.month === m).reduce((sum, s) => sum + (s.grossSalary || 0), 0);
           const totalCost = opExpense + payroll;
 
@@ -1467,7 +1470,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             { item: '  2. Doanh thu thực khác (Sách/Đồng phục...)', amount: otherRevenue, ratio: getRatio(otherRevenue) },
             { item: 'B. TỔNG CHI PHÍ THỰC TẾ (3 + 4)', amount: totalCost, ratio: getRatio(totalCost) },
             { item: '  3. Chi phí vận hành trung tâm', amount: opExpense, ratio: getRatio(opExpense) },
-            { item: '  4. Chi phí lương phát sinh / payrollCost', amount: payroll, ratio: getRatio(payroll) },
+            { item: '  4. Chi phí lương (gross/accrual) / payrollCost', amount: payroll, ratio: getRatio(payroll) },
             { item: 'C. LỢI NHUẬN THỰC TẾ (A - B)', amount: profit, ratio: getRatio(profit) }
           ];
         }
@@ -1491,8 +1494,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ transactions, filters }) => {
           return transactions
             .filter(t => {
-              if (t.studyType === 'Online' || t.revenueCategory === 'Học phí online') return false; // offline-only
-              if (t.paymentMethod === 'Chuyển số dư') return false; // Loại bỏ các khoản chuyển đổi số dư nội bộ
+              if (isOnlineStudy(t.studyType) || isOnlineTuition(t.revenueCategory)) return false; // offline-only
+              if (isInternalTransfer(t.paymentMethod)) return false; // Loại bỏ các khoản chuyển đổi số dư nội bộ
               if (filters.startDate && t.paymentDate < filters.startDate) return false;
               if (filters.endDate && t.paymentDate > filters.endDate) return false;
               if (filters.paymentMethod && t.paymentMethod !== filters.paymentMethod) return false;
@@ -1593,7 +1596,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ transactions, filters }) => {
           return transactions
             .filter(t => {
-              if (t.revenueCategory === 'Học phí offline' || t.revenueCategory === 'Học phí online' || t.studyType === 'Online') return false;
+              if (isTuitionRevenue(t.revenueCategory) || isOnlineTuition(t.revenueCategory) || isOnlineStudy(t.studyType)) return false;
               if (filters.startDate && t.paymentDate < filters.startDate) return false;
               if (filters.endDate && t.paymentDate > filters.endDate) return false;
               if (filters.revenueCategory && t.revenueCategory !== filters.revenueCategory) return false;
@@ -2051,7 +2054,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             });
 
             const dayAtt = attendance.filter(a => a.date === dateStr);
-            const dayTxs = transactions.filter(t => t.paymentDate === dateStr && t.revenueCategory !== 'Học phí online' && t.studyType !== 'Online');
+            const dayTxs = transactions.filter(t => t.paymentDate === dateStr && !isOnlineTuition(t.revenueCategory) && !isOnlineStudy(t.studyType));
             const dayExps = expenses.filter(e => e.date === dateStr);
 
             if (scheduledClasses.length > 0 || dayAtt.length > 0 || dayTxs.length > 0 || dayExps.length > 0) {
@@ -2124,14 +2127,14 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ transactions, students }) => {
           const list: any[] = [];
           transactions.forEach(t => {
-            if (t.studyType === 'Online' || t.revenueCategory === 'Học phí online') return;
+            if (isOnlineStudy(t.studyType) || isOnlineTuition(t.revenueCategory)) return;
 
             const errs: string[] = [];
             if (t.amount <= 0) errs.push('Số tiền <= 0đ');
             if (!t.paymentDate) errs.push('Thiếu ngày đóng');
             if (!t.paymentMethod?.trim()) errs.push('Thiếu hình thức thanh toán');
             
-            if (t.revenueCategory === 'Học phí offline') {
+            if (isTuitionRevenue(t.revenueCategory)) {
               const hasValidStudent = t.studentId && students.some(s => s.id === t.studentId);
               if (!hasValidStudent) {
                 errs.push('Thiếu studentId hợp lệ khớp với hồ sơ học viên');

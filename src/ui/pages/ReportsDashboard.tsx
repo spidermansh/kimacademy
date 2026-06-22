@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { REPORT_GROUPS, ReportDefinition } from '../../shared/business/reports';
-import { formatCurrency, formatDate, api } from '../../shared/utils';
+import { formatCurrency, formatDate, api, auth } from '../../shared/utils';
 import * as XLSX from 'xlsx-js-style';
 import {
   Search, Calendar, Users, BookOpen, Wallet,
@@ -245,6 +245,8 @@ export default function ReportsDashboard({
   const handleExportExcel = () => {
     if (!activeReport || reportData.length === 0) return;
 
+    const currentUser = auth.getUser();
+
     // 1. Build Info Sheet
     const infoAoa = [
       ['KIM ACADEMY - PHÂN HỆ BÁO CÁO THỐNG KÊ'],
@@ -252,7 +254,7 @@ export default function ReportsDashboard({
       ['Tên báo cáo:', activeReport.name],
       ['Mô tả:', activeReport.description],
       ['Thời gian xuất:', new Date().toLocaleTimeString('vi-VN') + ' ' + formatDate(new Date().toISOString())],
-      ['Người xuất:', 'Kế toán trung tâm'],
+      ['Người xuất:', currentUser?.name || currentUser?.username || 'Kế toán trung tâm'],
       [],
       ['BỘ LỌC ĐÃ ÁP DỤNG:'],
     ];
@@ -296,6 +298,18 @@ export default function ReportsDashboard({
     }
     if (activeReport.filters.includes('search') && appliedFilters.searchQuery) {
       infoAoa.push([' - Từ khóa tìm kiếm:', appliedFilters.searchQuery]);
+    }
+    if (activeReport.filters.includes('invCategory') && appliedFilters.categoryId) {
+      const c = invRaw.categories.find((x: any) => x.id === appliedFilters.categoryId);
+      infoAoa.push([' - Nhóm vật tư:', c ? c.name : appliedFilters.categoryId]);
+    }
+    if (activeReport.filters.includes('invLocation') && appliedFilters.locationId) {
+      const l = invRaw.locations.find((x: any) => x.id === appliedFilters.locationId);
+      infoAoa.push([' - Kho lưu trữ:', l ? l.name : appliedFilters.locationId]);
+    }
+    if (activeReport.filters.includes('invItem') && appliedFilters.itemId) {
+      const it = invRaw.items.find((x: any) => x.id === appliedFilters.itemId);
+      infoAoa.push([' - Mặt hàng:', it ? `${it.code ? it.code + ' - ' : ''}${it.name}` : appliedFilters.itemId]);
     }
 
     const wsInfo = XLSX.utils.aoa_to_sheet(infoAoa);

@@ -21,3 +21,19 @@ export const PAYMENT_METHOD_BALANCE_TRANSFER = 'Chuyển số dư';
 export function isInternalTransfer(paymentMethod: string | undefined | null): boolean {
   return paymentMethod === PAYMENT_METHOD_BALANCE_TRANSFER;
 }
+
+/** Danh mục doanh thu học phí online — loại khỏi các báo cáo/đối soát offline. */
+export const REVENUE_CATEGORY_TUITION_ONLINE = 'Học phí online';
+
+/** Kiểm tra một khoản thu có phải học phí online hay không. */
+export function isOnlineTuition(category: string | undefined | null): boolean {
+  return category === REVENUE_CATEGORY_TUITION_ONLINE;
+}
+
+/** Giá trị trường studyType cho hình thức học online. */
+export const STUDY_TYPE_ONLINE = 'Online';
+
+/** Kiểm tra giao dịch/buổi học thuộc hình thức online (theo studyType). */
+export function isOnlineStudy(studyType: string | undefined | null): boolean {
+  return studyType === STUDY_TYPE_ONLINE;
+}
