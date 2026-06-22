@@ -660,6 +660,12 @@ export const api = {
       body: JSON.stringify(data)
     });
   },
+  async deliverInventoryMovement(id: string, data: { note?: string } = {}): Promise<any> {
+    return request(`/api/inventory/movements/${id}/deliver`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
 };
 
 export function formatDateKey(date: Date = new Date()): string {

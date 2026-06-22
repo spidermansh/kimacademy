@@ -610,6 +610,8 @@ model InventoryMovement {
   saleBatchId           String?
   saleBatch             InventorySaleBatch? @relation(fields: [saleBatchId], references: [id])
   paymentStatus         String             @default("not_applicable") // not_applicable | unpaid | paid
+  issued                Boolean            @default(true) // false = đã thu tiền nhưng chưa phát hàng (chờ giao)
+  deliveredAt           DateTime?          // thời điểm phát hàng (khi issued chuyển true)
   paymentMethod         String?
   paymentDate           DateTime? @db.Date
   paidAt                DateTime?
@@ -625,6 +627,7 @@ model InventoryMovement {
   @@index([relatedStudentId])
   @@index([saleBatchId])
   @@index([paymentStatus, movementType])
+  @@index([issued, movementType])
 }
 
 // 32. InventorySaleBatch - Gom nhom giao dich ban/phat vat tu hang loat

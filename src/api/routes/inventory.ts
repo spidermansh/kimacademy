@@ -254,9 +254,13 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, validateBody(
     const finalPaymentDate = finalPaymentStatus === 'paid' ? (paymentDate || movementDate) : null;
     const finalPaymentMethod = finalPaymentStatus === 'paid' ? (paymentMethod || 'Tiền mặt') : null;
 
+    // "Đã thu tiền – chưa phát": chỉ áp dụng cho xuất bán học viên đã thu tiền.
+    // Khi đó KHÔNG trừ kho / KHÔNG kiểm tra tồn lúc tạo — để dành cho lúc "Phát hàng".
+    const finalIssued = !(isStudentSale && finalPaymentStatus === 'paid' && req.body.issued === false);
+
     // 2. Block negative inventory check for exports
     const isExport = ['issue_to_student', 'issue_to_staff', 'internal_use', 'damage', 'loss', 'transfer'].includes(movementType);
-    if (isExport && fromLocationId) {
+    if (isExport && fromLocationId && finalIssued) {
       const stock = await tx.inventoryStock.findUnique({
         where: {
           itemId_variantId_locationId: {
@@ -274,8 +278,8 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, validateBody(
     }
 
     // 3. Perform inventory updates
-    // Decrement from source
-    if (fromLocationId) {
+    // Decrement from source (bỏ qua nếu chưa phát hàng — sẽ trừ khi bấm "Phát hàng")
+    if (fromLocationId && finalIssued) {
       const stockKey = {
         itemId,
         variantId: finalVariantId || '',
@@ -372,6 +376,8 @@ inventoryRouter.post('/inventory/movements', requireInventoryRole, validateBody(
         relatedStaffId: relatedStaffId || null,
         relatedRevenueOtherId: revenueOtherId,
         paymentStatus: finalPaymentStatus,
+        issued: finalIssued,
+        deliveredAt: finalIssued ? new Date() : null,
         paymentMethod: finalPaymentMethod,
         paymentDate: finalPaymentDate,
         paidAt: finalPaymentStatus === 'paid' ? new Date() : null,
@@ -697,6 +703,85 @@ inventoryRouter.post('/inventory/movements/:id/collect-payment', requireInventor
     }
     if (error.message === 'INVENTORY_PAYMENT_ALREADY_COLLECTED') {
       return res.status(409).json({ message: 'Giao dịch này đã thu tiền, không thể thu trùng' });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// POST /inventory/movements/:id/deliver — phát hàng cho giao dịch "đã thu – chưa phát".
+// Lúc này MỚI kiểm tra tồn + trừ kho.
+inventoryRouter.post('/inventory/movements/:id/deliver', requireInventoryRole, async (req, res) => {
+  const { id } = req.params;
+  const { note } = req.body;
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const movement = await tx.inventoryMovement.findUnique({
+        where: { id },
+        include: { item: true },
+      });
+
+      if (!movement) throw new Error('INVENTORY_MOVEMENT_NOT_FOUND');
+      if (movement.movementType !== 'issue_to_student') {
+        throw new Error('INVENTORY_DELIVER_NOT_ALLOWED');
+      }
+      if (movement.issued) {
+        throw new Error('INVENTORY_ALREADY_DELIVERED');
+      }
+
+      // Kiểm tra tồn + trừ kho tại thời điểm phát hàng.
+      if (movement.fromLocationId) {
+        const stock = await tx.inventoryStock.findUnique({
+          where: {
+            itemId_variantId_locationId: {
+              itemId: movement.itemId,
+              variantId: movement.variantId || '',
+              locationId: movement.fromLocationId,
+            },
+          },
+        });
+        const currentQty = stock?.quantityOnHand || 0;
+        if (currentQty < movement.quantity) {
+          throw new Error(`INSUFFICIENT_STOCK|Không đủ tồn để phát hàng. (Hiện còn: ${currentQty} ${movement.item.unit}, cần phát: ${movement.quantity} ${movement.item.unit})`);
+        }
+        await tx.inventoryStock.update({
+          where: { id: stock!.id },
+          data: { quantityOnHand: stock!.quantityOnHand - movement.quantity },
+        });
+      }
+
+      return tx.inventoryMovement.update({
+        where: { id },
+        data: {
+          issued: true,
+          deliveredAt: new Date(),
+          note: note ? `${movement.note || ''}${movement.note ? '\n' : ''}Phát hàng: ${note}` : movement.note,
+        },
+        include: {
+          item: true,
+          variant: true,
+          fromLocation: true,
+          toLocation: true,
+          relatedStudent: true,
+          relatedStaff: true,
+          relatedRevenueOther: true,
+        },
+      });
+    });
+
+    res.json(updated);
+  } catch (error: any) {
+    if (error.message === 'INVENTORY_MOVEMENT_NOT_FOUND') {
+      return res.status(404).json({ message: 'Không tìm thấy giao dịch kho' });
+    }
+    if (error.message === 'INVENTORY_DELIVER_NOT_ALLOWED') {
+      return res.status(400).json({ message: 'Chỉ giao dịch xuất bán cho học viên mới phát hàng được' });
+    }
+    if (error.message === 'INVENTORY_ALREADY_DELIVERED') {
+      return res.status(409).json({ message: 'Giao dịch này đã phát hàng rồi' });
+    }
+    if (typeof error.message === 'string' && error.message.startsWith('INSUFFICIENT_STOCK|')) {
+      return res.status(400).json({ message: error.message.slice('INSUFFICIENT_STOCK|'.length) });
     }
     res.status(500).json({ message: error.message });
   }

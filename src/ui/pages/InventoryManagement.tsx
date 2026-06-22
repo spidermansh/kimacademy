@@ -7,8 +7,22 @@ import {
 } from 'lucide-react';
 import { api, formatCurrency } from '../../shared/utils';
 import { useToast } from '../components/Toast';
+import * as XLSX from 'xlsx';
 
 type SubTabId = 'stocks' | 'movements' | 'items' | 'suppliers' | 'locations' | 'categories';
+
+const MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  opening: 'Tồn đầu kỳ',
+  purchase_in: 'Mua nhập kho',
+  return_in: 'Trả lại kho',
+  issue_to_student: 'Bán học viên',
+  issue_to_staff: 'Cấp nhân sự',
+  internal_use: 'Sử dụng nội bộ',
+  adjustment: 'Kiểm kê điều chỉnh',
+  damage: 'Hỏng hóc',
+  loss: 'Mất mát',
+  transfer: 'Chuyển kho',
+};
 
 export default function InventoryManagement() {
   const toast = useToast();
@@ -80,6 +94,7 @@ export default function InventoryManagement() {
   const [mNote, setMNote] = useState('');
   const [mDate, setMDate] = useState(new Date().toISOString().slice(0, 10));
   const [mPaymentStatus, setMPaymentStatus] = useState<'unpaid' | 'paid'>('unpaid');
+  const [mIssued, setMIssued] = useState(true); // false = đã thu tiền nhưng chưa phát hàng
   const [mPaymentMethod, setMPaymentMethod] = useState('Tiền mặt');
   const [mPaymentDate, setMPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [mSaleMode, setMSaleMode] = useState<'single' | 'bulk'>('single');
@@ -90,6 +105,13 @@ export default function InventoryManagement() {
   const [collectPaymentMethod, setCollectPaymentMethod] = useState('Tiền mặt');
   const [collectPaymentDate, setCollectPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [collectNote, setCollectNote] = useState('');
+
+  // Bộ lọc Nhật ký xuất nhập
+  const [mvfType, setMvfType] = useState('all');
+  const [mvfPayment, setMvfPayment] = useState('all'); // all | unpaid | paid | pending_delivery
+  const [mvfFrom, setMvfFrom] = useState('');
+  const [mvfTo, setMvfTo] = useState('');
+  const [mvfSearch, setMvfSearch] = useState('');
 
   const inventoryPaymentMethods = ['Tiền mặt', 'Chuyển khoản', 'Momo', 'ZaloPay', 'Khác'];
 
@@ -243,6 +265,7 @@ export default function InventoryManagement() {
     setMStaffId('');
     setMNote('');
     setMPaymentStatus('unpaid');
+    setMIssued(true);
     setMPaymentMethod('Tiền mặt');
     setMPaymentDate(new Date().toISOString().slice(0, 10));
     setMSaleMode('single');
@@ -321,6 +344,7 @@ export default function InventoryManagement() {
         relatedStudentId: mStudentId || undefined,
         relatedStaffId: mStaffId || undefined,
         paymentStatus: mType === 'issue_to_student' && mUnitSalePrice > 0 ? mPaymentStatus : undefined,
+        issued: mType === 'issue_to_student' ? mIssued : undefined,
         paymentMethod: mType === 'issue_to_student' && mPaymentStatus === 'paid' ? mPaymentMethod : undefined,
         paymentDate: mType === 'issue_to_student' && mPaymentStatus === 'paid' ? mPaymentDate : undefined,
         note: mNote,
@@ -329,7 +353,9 @@ export default function InventoryManagement() {
 
       toast.success(
         'Thành công',
-        mType === 'issue_to_student' && mPaymentStatus === 'unpaid'
+        mType === 'issue_to_student' && !mIssued
+          ? 'Đã thu tiền — chờ phát hàng (vào Nhật ký để bấm "Phát hàng" khi giao)'
+          : mType === 'issue_to_student' && mPaymentStatus === 'unpaid'
           ? 'Đã phát hàng và ghi nhận trạng thái chưa thu tiền'
           : 'Đã thực hiện giao dịch kho thành công'
       );
@@ -366,6 +392,23 @@ export default function InventoryManagement() {
     }
   };
 
+  const handleDeliver = async (movement: any) => {
+    const ok = await toast.confirm({
+      title: '📦 Xác nhận phát hàng?',
+      message: `Phát ${movement.quantity} ${movement.item?.unit || ''} "${movement.item?.name || ''}" cho học viên ${movement.relatedStudent?.name || ''}. Hệ thống sẽ trừ kho ngay (kiểm tra tồn).`,
+      confirmText: 'Phát hàng',
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      await api.deliverInventoryMovement(movement.id, {});
+      toast.success('Đã phát hàng', 'Giao dịch hoàn tất: đã thu tiền + đã phát hàng');
+      fetchInitialData();
+    } catch (err: any) {
+      toast.error('Phát hàng thất bại', err.message);
+    }
+  };
+
   // Automatically fetch default prices when item changes in movement form
   useEffect(() => {
     if (mItemId) {
@@ -394,6 +437,7 @@ export default function InventoryManagement() {
       setMToLocationId('');
       if (mType === 'issue_to_student') {
         setMPaymentStatus('unpaid');
+        setMIssued(true);
         setMPaymentDate(mDate);
       } else {
         setMSaleMode('single');
@@ -458,6 +502,86 @@ export default function InventoryManagement() {
     (m.totalAmount || 0) > 0
   );
   const pendingInventoryAmount = pendingInventoryPayments.reduce((sum, m) => sum + (Number(m.totalAmount) || 0), 0);
+
+  // Đã thu tiền nhưng chưa phát hàng (chờ giao).
+  const pendingDeliveries = movements.filter(m =>
+    m.movementType === 'issue_to_student' &&
+    m.paymentStatus === 'paid' &&
+    m.issued === false
+  );
+  const pendingDeliveryQty = pendingDeliveries.reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
+
+  // --- Bộ lọc + xuất Excel cho Nhật ký xuất nhập ---
+  const filteredMovements = movements.filter(m => {
+    if (mvfType !== 'all' && m.movementType !== mvfType) return false;
+    if (mvfFrom && m.movementDate < mvfFrom) return false;
+    if (mvfTo && m.movementDate > mvfTo) return false;
+    if (mvfPayment === 'unpaid' && !(m.movementType === 'issue_to_student' && m.paymentStatus === 'unpaid' && (m.totalAmount || 0) > 0)) return false;
+    if (mvfPayment === 'paid' && m.paymentStatus !== 'paid') return false;
+    if (mvfPayment === 'pending_delivery' && !(m.paymentStatus === 'paid' && m.issued === false)) return false;
+    if (mvfSearch.trim()) {
+      const q = mvfSearch.toLowerCase().trim();
+      const hay = `${m.item?.name || ''} ${m.relatedStudent?.name || ''} ${m.relatedStaff?.name || ''} ${m.note || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const exportMovementsXLSX = () => {
+    if (filteredMovements.length === 0) {
+      toast.error('Không có dữ liệu', 'Danh sách giao dịch (sau lọc) đang trống');
+      return;
+    }
+    const rows = filteredMovements.map(m => ({
+      'Ngày GD': m.movementDate,
+      'Loại GD': MOVEMENT_TYPE_LABELS[m.movementType] || m.movementType,
+      'Mặt hàng': `${m.item?.name || ''}${m.variant?.name && m.variant.name !== 'Mặc định' ? ` (${m.variant.name})` : ''}`,
+      'Từ kho': m.fromLocation?.name || '',
+      'Đến kho': m.toLocation?.name || '',
+      'Số lượng': m.quantity,
+      'Đơn vị': m.item?.unit || '',
+      'Thành tiền (VND)': m.totalAmount || 0,
+      'Đối tác': m.relatedStudent ? `HV: ${m.relatedStudent.name}` : m.relatedStaff ? `NV: ${m.relatedStaff.name}` : '',
+      'Thu tiền': m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0 ? (m.paymentStatus === 'paid' ? 'Đã thu' : 'Chưa thu') : '',
+      'Phát hàng': m.movementType === 'issue_to_student' ? (m.issued ? 'Đã phát' : 'Chờ phát') : '',
+      'Ngày thu': m.paymentDate || '',
+      'Hình thức thu': m.paymentMethod || '',
+      'Ghi chú': m.note || '',
+      'Người tạo': m.createdBy || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'NhatKyXuatNhap');
+    XLSX.writeFile(wb, `nhat-ky-xuat-nhap-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('Đã xuất Excel', `${rows.length} giao dịch`);
+  };
+
+  const renderMovementToolbar = () => (
+    <div className="px-6 py-3 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center gap-2">
+      <span className="flex items-center gap-1.5 text-slate-500 text-xs font-black"><ListFilter className="w-4 h-4" /> Lọc</span>
+      <input value={mvfSearch} onChange={e => setMvfSearch(e.target.value)} placeholder="Tìm mặt hàng / học viên / ghi chú…" className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:border-indigo-400 min-w-[200px] flex-1" />
+      <select value={mvfType} onChange={e => setMvfType(e.target.value)} className="px-2 py-1.5 border border-slate-200 rounded-xl text-xs bg-white">
+        <option value="all">Tất cả loại GD</option>
+        {Object.entries(MOVEMENT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </select>
+      <select value={mvfPayment} onChange={e => setMvfPayment(e.target.value)} className="px-2 py-1.5 border border-slate-200 rounded-xl text-xs bg-white">
+        <option value="all">Mọi trạng thái</option>
+        <option value="unpaid">Chưa thu (nợ tiền)</option>
+        <option value="paid">Đã thu</option>
+        <option value="pending_delivery">Đã thu - chờ phát</option>
+      </select>
+      <input type="date" value={mvfFrom} onChange={e => setMvfFrom(e.target.value)} className="px-2 py-1.5 border border-slate-200 rounded-xl text-xs bg-white font-mono" />
+      <span className="text-slate-400 text-xs">→</span>
+      <input type="date" value={mvfTo} onChange={e => setMvfTo(e.target.value)} className="px-2 py-1.5 border border-slate-200 rounded-xl text-xs bg-white font-mono" />
+      <span className="text-xs text-slate-500 font-bold">{filteredMovements.length}/{movements.length}</span>
+      {(mvfType !== 'all' || mvfPayment !== 'all' || mvfFrom || mvfTo || mvfSearch) && (
+        <button onClick={() => { setMvfType('all'); setMvfPayment('all'); setMvfFrom(''); setMvfTo(''); setMvfSearch(''); }} className="px-2.5 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-700 rounded-xl border border-slate-200 bg-white cursor-pointer">Xóa lọc</button>
+      )}
+      <button onClick={exportMovementsXLSX} className="ml-auto px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black cursor-pointer inline-flex items-center gap-1.5">
+        <FileSpreadsheet className="w-4 h-4" /> Xuất Excel
+      </button>
+    </div>
+  );
 
   const toggleBulkStudent = (studentId: string) => {
     setMSelectedStudentIds(prev => (
@@ -694,6 +818,23 @@ export default function InventoryManagement() {
               </button>
             )}
           </div>
+          {pendingDeliveries.length > 0 && (
+            <div className="px-6 py-4 border-b border-slate-100 bg-sky-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-sky-700">Đã thu tiền — chờ phát hàng</p>
+                <p className="text-xs text-sky-800 mt-1">
+                  {pendingDeliveries.length} giao dịch chờ phát, tổng {pendingDeliveryQty} sản phẩm
+                </p>
+              </div>
+              <button
+                onClick={() => handleDeliver(pendingDeliveries[0])}
+                className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black cursor-pointer"
+              >
+                Phát giao dịch đầu tiên
+              </button>
+            </div>
+          )}
+          {renderMovementToolbar()}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -712,7 +853,10 @@ export default function InventoryManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
-                {movements.map(m => {
+                {filteredMovements.length === 0 && (
+                  <tr><td colSpan={11} className="px-6 py-8 text-center text-slate-400 text-sm">Không có giao dịch nào khớp bộ lọc.</td></tr>
+                )}
+                {filteredMovements.map(m => {
                   const isImport = ['opening', 'purchase_in', 'return_in'].includes(m.movementType);
                   return (
                     <tr key={m.id} className="hover:bg-slate-50 transition-colors">
@@ -752,10 +896,15 @@ export default function InventoryManagement() {
                               <AlertCircle className="w-3.5 h-3.5" />
                               Đã phát - chưa thu
                             </span>
-                          ) : (
+                          ) : m.issued ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl font-black text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <Check className="w-3.5 h-3.5" />
-                              Đã thu tiền
+                              Đã thu - đã phát
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl font-black text-[11px] bg-sky-50 text-sky-700 border border-sky-200">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Đã thu - chờ phát
                             </span>
                           )
                         ) : (
@@ -772,13 +921,21 @@ export default function InventoryManagement() {
                       </td>
                       <td className="px-6 py-4 text-slate-500 italic max-w-xs truncate">{m.note || '-'}</td>
                       <td className="px-6 py-4">
-                        {m.paymentStatus === 'unpaid' && (m.totalAmount || 0) > 0 ? (
+                        {m.movementType === 'issue_to_student' && m.paymentStatus === 'unpaid' && (m.totalAmount || 0) > 0 ? (
                           <button
                             onClick={() => openCollectPaymentModal(m)}
                             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black cursor-pointer inline-flex items-center gap-1"
                           >
                             <DollarSign className="w-3.5 h-3.5" />
                             Thu tiền
+                          </button>
+                        ) : m.movementType === 'issue_to_student' && m.paymentStatus === 'paid' && !m.issued ? (
+                          <button
+                            onClick={() => handleDeliver(m)}
+                            className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-[11px] font-black cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <Package className="w-3.5 h-3.5" />
+                            Phát hàng
                           </button>
                         ) : (
                           <span className="text-slate-300">-</span>
@@ -1390,11 +1547,11 @@ export default function InventoryManagement() {
                     Doanh thu vật tư chỉ ghi nhận khi trạng thái là "Đã thu tiền".
                   </p>
                   <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3 space-y-3">
-                    <label className="block text-xs font-black text-amber-700 uppercase">Trạng thái thu tiền</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="block text-xs font-black text-amber-700 uppercase">Trạng thái thu tiền / phát hàng</label>
+                    <div className={`grid grid-cols-1 ${mSaleMode === 'single' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2`}>
                       <button
                         type="button"
-                        onClick={() => setMPaymentStatus('unpaid')}
+                        onClick={() => { setMPaymentStatus('unpaid'); setMIssued(true); }}
                         className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
                           mPaymentStatus === 'unpaid'
                             ? 'bg-amber-600 text-white border-amber-600'
@@ -1407,17 +1564,40 @@ export default function InventoryManagement() {
                         type="button"
                         onClick={() => {
                           setMPaymentStatus('paid');
+                          setMIssued(true);
                           setMPaymentDate(mDate);
                         }}
                         className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
-                          mPaymentStatus === 'paid'
+                          mPaymentStatus === 'paid' && mIssued
                             ? 'bg-emerald-600 text-white border-emerald-600'
                             : 'bg-white text-emerald-700 border-emerald-200'
                         }`}
                       >
                         Thu tiền ngay
                       </button>
+                      {mSaleMode === 'single' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMPaymentStatus('paid');
+                            setMIssued(false);
+                            setMPaymentDate(mDate);
+                          }}
+                          className={`px-3 py-2 rounded-xl text-xs font-black border cursor-pointer text-left ${
+                            mPaymentStatus === 'paid' && !mIssued
+                              ? 'bg-sky-600 text-white border-sky-600'
+                              : 'bg-white text-sky-700 border-sky-200'
+                          }`}
+                        >
+                          Đã thu - chưa phát (nợ hàng)
+                        </button>
+                      )}
                     </div>
+                    {mPaymentStatus === 'paid' && !mIssued && (
+                      <p className="text-[10px] text-sky-600 font-bold">
+                        ⓘ Ghi nhận doanh thu ngay, CHƯA trừ kho. Vào Nhật ký bấm "Phát hàng" khi giao (lúc đó mới trừ kho).
+                      </p>
+                    )}
                     {mPaymentStatus === 'paid' && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
