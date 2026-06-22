@@ -19,6 +19,27 @@ model User {
   updatedAt    DateTime @updatedAt
 }
 
+// 1b. AssignedTask - Công việc giao tay (quản lý giao cho user khác / NV tự tạo cho mình)
+model AssignedTask {
+  id               String    @id @default(uuid())
+  title            String    // tên công việc
+  content          String?   // nội dung chi tiết
+  dueDate          DateTime? @db.Date // hạn xử lý (YYYY-MM-DD) — xem DATE_ONLY_FIELDS
+  priority         String    @default("normal") // low | normal | high
+  status           String    @default("pending") // pending | in_progress | done
+  assigneeUserId   String    // user được giao
+  assigneeName     String    // tên hiển thị người được giao (denormalized)
+  assignedByUserId String?   // user giao việc (id, KHÔNG FK cứng — giữ dấu lịch sử)
+  assignedByName   String?
+  completionNote   String?   // ghi chú khi báo cáo hoàn thành
+  completedAt      DateTime? // thời điểm hoàn thành (timestamp)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([assigneeUserId, status])
+  @@index([dueDate])
+}
+
 // 2. StaffMember - Nhân sự (Giáo viên, Trợ giảng, Văn phòng...)
 model StaffMember {
   id                          String             @id @default(uuid())

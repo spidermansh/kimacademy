@@ -26,6 +26,15 @@ export interface InventoryMovementRow {
 }
 export interface InventoryCategoryRow { id: string; name: string }
 
+// ===== Giao việc (AssignedTask) — shape phẳng cho report engine =====
+export interface AssignedTaskRow {
+  id: string; title: string; content?: string;
+  dueDate?: string; priority: string; status: string;
+  assigneeUserId: string; assigneeName: string;
+  assignedByName?: string; completionNote?: string;
+  completedAt?: string; createdAt?: string;
+}
+
 export interface ReportParams {
   students: Student[];
   classes: Class[];
@@ -45,6 +54,7 @@ export interface ReportParams {
   inventoryStocks?: InventoryStockRow[];
   inventoryMovements?: InventoryMovementRow[];
   inventoryCategories?: InventoryCategoryRow[];
+  assignedTasks?: AssignedTaskRow[];
   filters: {
     month?: string;
     startDate?: string;
@@ -2887,6 +2897,131 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               bySup[sup].value += m.totalAmount || 0;
             });
           return Object.values(bySup).sort((a: any, b: any) => b.value - a.value);
+        },
+      },
+    ]
+  },
+  {
+    id: 'grp_tasks',
+    label: 'Báo cáo giao việc',
+    icon: '🗂️',
+    reports: [
+      {
+        id: 'task_by_assignee_summary',
+        implemented: true,
+        name: 'Tổng hợp công việc theo người thực hiện',
+        description: 'Số công việc được giao, đã xong, đang làm, chờ và quá hạn theo từng người (lọc theo ngày tạo).',
+        type: 'summary',
+        filters: ['dateRange'],
+        columns: [
+          { key: 'assigneeName', label: 'Người thực hiện', align: 'left', format: 'text' },
+          { key: 'total', label: 'Tổng việc', align: 'right', format: 'number' },
+          { key: 'done', label: 'Đã xong', align: 'right', format: 'number' },
+          { key: 'inProgress', label: 'Đang làm', align: 'right', format: 'number' },
+          { key: 'pending', label: 'Chờ xử lý', align: 'right', format: 'number' },
+          { key: 'overdue', label: 'Quá hạn', align: 'right', format: 'number' },
+          { key: 'completionRate', label: 'Tỷ lệ hoàn thành', align: 'right', format: 'text' },
+        ],
+        compute: ({ assignedTasks = [], filters }) => {
+          const start = filters.startDate;
+          const end = filters.endDate;
+          const today = new Date().toISOString().slice(0, 10);
+          const byUser: Record<string, any> = {};
+          assignedTasks
+            .filter(t => {
+              const d = (t.createdAt || '').slice(0, 10);
+              if (start && d && d < start) return false;
+              if (end && d && d > end) return false;
+              return true;
+            })
+            .forEach(t => {
+              const k = t.assigneeName || '(không rõ)';
+              const g = byUser[k] || (byUser[k] = { assigneeName: k, total: 0, done: 0, inProgress: 0, pending: 0, overdue: 0 });
+              g.total += 1;
+              if (t.status === 'done') g.done += 1;
+              else if (t.status === 'in_progress') g.inProgress += 1;
+              else g.pending += 1;
+              if (t.status !== 'done' && t.dueDate && t.dueDate < today) g.overdue += 1;
+            });
+          return Object.values(byUser)
+            .map((g: any) => ({ ...g, completionRate: g.total > 0 ? `${Math.round((g.done / g.total) * 100)}%` : '—' }))
+            .sort((a: any, b: any) => b.total - a.total);
+        },
+      },
+      {
+        id: 'task_overdue_detail',
+        implemented: true,
+        name: 'Công việc quá hạn chưa hoàn thành',
+        description: 'Các công việc đã quá hạn xử lý mà chưa ở trạng thái hoàn thành.',
+        type: 'detail',
+        filters: ['search'],
+        columns: [
+          { key: 'title', label: 'Công việc', align: 'left', format: 'text' },
+          { key: 'assigneeName', label: 'Người thực hiện', align: 'left', format: 'text' },
+          { key: 'dueDate', label: 'Hạn xử lý', align: 'center', format: 'date' },
+          { key: 'priority', label: 'Ưu tiên', align: 'center', format: 'text' },
+          { key: 'status', label: 'Trạng thái', align: 'center', format: 'text' },
+          { key: 'assignedByName', label: 'Người giao', align: 'left', format: 'text' },
+        ],
+        compute: ({ assignedTasks = [], filters }) => {
+          const today = new Date().toISOString().slice(0, 10);
+          const q = (filters.searchQuery || '').toLowerCase().trim();
+          const prio: Record<string, string> = { low: 'Thấp', normal: 'Thường', high: 'Cao' };
+          const stat: Record<string, string> = { pending: 'Chờ xử lý', in_progress: 'Đang làm', done: 'Hoàn thành' };
+          return assignedTasks
+            .filter(t => t.status !== 'done' && t.dueDate && t.dueDate < today)
+            .filter(t => !q || `${t.title} ${t.assigneeName}`.toLowerCase().includes(q))
+            .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+            .map(t => ({
+              title: t.title,
+              assigneeName: t.assigneeName,
+              dueDate: t.dueDate,
+              priority: prio[t.priority] || t.priority,
+              status: stat[t.status] || t.status,
+              assignedByName: t.assignedByName || '—',
+            }));
+        },
+      },
+      {
+        id: 'task_detail',
+        implemented: true,
+        name: 'Chi tiết công việc theo kỳ',
+        description: 'Liệt kê công việc tạo trong kỳ kèm trạng thái, hạn, người thực hiện và ghi chú hoàn thành.',
+        type: 'detail',
+        filters: ['dateRange', 'search'],
+        columns: [
+          { key: 'createdAt', label: 'Ngày tạo', align: 'center', format: 'date' },
+          { key: 'title', label: 'Công việc', align: 'left', format: 'text' },
+          { key: 'assigneeName', label: 'Người thực hiện', align: 'left', format: 'text' },
+          { key: 'dueDate', label: 'Hạn', align: 'center', format: 'date' },
+          { key: 'priority', label: 'Ưu tiên', align: 'center', format: 'text' },
+          { key: 'status', label: 'Trạng thái', align: 'center', format: 'text' },
+          { key: 'completionNote', label: 'Ghi chú hoàn thành', align: 'left', format: 'text' },
+        ],
+        compute: ({ assignedTasks = [], filters }) => {
+          const start = filters.startDate;
+          const end = filters.endDate;
+          const q = (filters.searchQuery || '').toLowerCase().trim();
+          const prio: Record<string, string> = { low: 'Thấp', normal: 'Thường', high: 'Cao' };
+          const stat: Record<string, string> = { pending: 'Chờ xử lý', in_progress: 'Đang làm', done: 'Hoàn thành' };
+          return assignedTasks
+            .filter(t => {
+              const d = (t.createdAt || '').slice(0, 10);
+              if (start && d && d < start) return false;
+              if (end && d && d > end) return false;
+              if (q && !`${t.title} ${t.assigneeName}`.toLowerCase().includes(q)) return false;
+              return true;
+            })
+            .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+            .map(t => ({
+              createdAt: (t.createdAt || '').slice(0, 10),
+              title: t.title,
+              assigneeName: t.assigneeName,
+              dueDate: t.dueDate || '—',
+              priority: prio[t.priority] || t.priority,
+              status: stat[t.status] || t.status,
+              completionNote: t.completionNote || '—',
+            }));
         },
       },
     ]

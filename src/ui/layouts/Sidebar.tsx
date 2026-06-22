@@ -12,7 +12,7 @@ export type TabId =
   | 'ban-lam-viec' | 'tuyen-sinh' | 'quan-ly-hoc-vien' | 'quan-ly-lop' | 'diem-danh'
   | 'thu-tien' | 'chi-phi' | 'hoc-phi' | 'nhac-ph' | 'inventory'
   | 'staff-list' | 'cham-cong' | 'ung-luong' | 'bang-luong'
-  | 'bc-dashboard' | 'bc-student' | 'bc-class' | 'bc-tuition' | 'bc-finance' | 'bc-staff' | 'bc-inventory' | 'bc-audit' | 'bc-leads'
+  | 'bc-dashboard' | 'bc-student' | 'bc-class' | 'bc-tuition' | 'bc-finance' | 'bc-staff' | 'bc-inventory' | 'bc-audit' | 'bc-leads' | 'bc-tasks'
   | 'huong-dan' | 'quan-ly-user' | 'cai-dat' | 'gv-home';
 
 interface NavItem {
@@ -120,6 +120,7 @@ const NAV_MODULES: NavModule[] = [
       { id: 'bc-inventory', label: 'Kho vật tư',          icon: <Package className="w-5 h-5" />,    color: 'indigo' },
       { id: 'bc-audit',     label: 'Đối soát & nhật ký',   icon: <Clock className="w-5 h-5" />,      color: 'slate' },
       { id: 'bc-leads',     label: 'Tuyển sinh',          icon: <PhoneCall className="w-5 h-5" />,  color: 'pink' },
+      { id: 'bc-tasks',     label: 'Giao việc',           icon: <ClipboardCheck className="w-5 h-5" />, color: 'amber' },
     ],
   },
 ];

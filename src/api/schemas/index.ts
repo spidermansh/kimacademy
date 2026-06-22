@@ -22,6 +22,25 @@ export const createTransactionSchema = z
   })
   .passthrough();
 
+// POST /tasks — giao việc thủ công.
+export const createTaskSchema = z
+  .object({
+    title: z.string().min(1, 'bắt buộc'),
+    content: z.string().optional(),
+    dueDate: dateString.optional(),
+    priority: z.enum(['low', 'normal', 'high']).optional(),
+    assigneeUserId: z.string().optional(),
+  })
+  .passthrough();
+
+// POST /tasks/:id/status — đổi trạng thái / báo cáo hoàn thành.
+export const updateTaskStatusSchema = z
+  .object({
+    status: z.enum(['pending', 'in_progress', 'done']),
+    completionNote: z.string().optional(),
+  })
+  .passthrough();
+
 // POST /expenses — chi phí vận hành.
 export const createExpenseSchema = z
   .object({

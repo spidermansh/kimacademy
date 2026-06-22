@@ -96,6 +96,12 @@ export default function ReportsDashboard({
     }).catch(() => { /* phân hệ kho có thể trống */ }).finally(() => setInvLoading(false));
   }, []);
 
+  // Công việc giao tay (cho nhóm báo cáo "Báo cáo giao việc").
+  const [assignedTasks, setAssignedTasks] = useState<any[]>([]);
+  useEffect(() => {
+    api.getTasks().then(t => setAssignedTasks(Array.isArray(t) ? t : [])).catch(() => { /* có thể trống */ });
+  }, []);
+
   // Map dữ liệu kho thô (API) sang shape phẳng cho report engine.
   const inventoryData = useMemo(() => {
     const itemMap = new Map(invRaw.items.map((it: any) => [it.id, it]));
@@ -200,13 +206,14 @@ export default function ReportsDashboard({
         systemParameters,
         admissionLeads,
         enrollments,
+        assignedTasks,
         ...inventoryData
       });
     } catch (err) {
       console.error('Lỗi khi tính toán dữ liệu báo cáo:', err);
       return [];
     }
-  }, [activeReport, students, classes, transactions, attendance, expenses, staff, teachingLogs, advances, salaries, dailyCloses, auditLogs, appliedFilters, systemParameters, admissionLeads, inventoryData]);
+  }, [activeReport, students, classes, transactions, attendance, expenses, staff, teachingLogs, advances, salaries, dailyCloses, auditLogs, appliedFilters, systemParameters, admissionLeads, inventoryData, assignedTasks]);
 
   // Totals Row calculation
   const hasTotals = useMemo(() => {

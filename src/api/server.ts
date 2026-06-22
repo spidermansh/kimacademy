@@ -22,6 +22,7 @@ import { admissionsRouter } from './routes/admissions';
 import { inventoryRouter } from './routes/inventory';
 import { notificationsRouter } from './routes/notifications';
 import { backupRouter } from './routes/backup';
+import { tasksRouter } from './routes/tasks';
 import { ledgerRouter } from './routes/ledger';
 import { startLedgerReconcileJob } from './jobs/ledger-reconcile.job';
 
@@ -111,6 +112,7 @@ app.use('/api', inventoryRouter);
 app.use('/api', notificationsRouter);
 app.use('/api', backupRouter);
 app.use('/api', ledgerRouter);
+app.use('/api', tasksRouter);
 
 app.use('/api', (req, res) => {
   res.status(404).json({

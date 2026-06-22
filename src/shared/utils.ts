@@ -666,6 +666,29 @@ export const api = {
       body: JSON.stringify(data)
     });
   },
+  // ===== Giao việc (AssignedTask) =====
+  async getMe(): Promise<any> {
+    return request('/api/auth/me');
+  },
+  async getTasks(params?: { assigneeUserId?: string; status?: string }): Promise<any[]> {
+    const qs = new URLSearchParams();
+    if (params?.assigneeUserId) qs.set('assigneeUserId', params.assigneeUserId);
+    if (params?.status) qs.set('status', params.status);
+    const q = qs.toString();
+    return request(`/api/tasks${q ? `?${q}` : ''}`);
+  },
+  async createTask(data: any): Promise<any> {
+    return request('/api/tasks', { method: 'POST', body: JSON.stringify(data) });
+  },
+  async updateTask(id: string, data: any): Promise<any> {
+    return request(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
+  async setTaskStatus(id: string, data: { status: string; completionNote?: string }): Promise<any> {
+    return request(`/api/tasks/${id}/status`, { method: 'POST', body: JSON.stringify(data) });
+  },
+  async deleteTask(id: string): Promise<any> {
+    return request(`/api/tasks/${id}`, { method: 'DELETE' });
+  },
 };
 
 export function formatDateKey(date: Date = new Date()): string {

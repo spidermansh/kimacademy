@@ -175,6 +175,12 @@ const TAB_LOOKUP: Record<TabId, { label: string; icon: React.ReactNode; color: s
     color: 'pink',
     subtitle: 'Tỷ lệ chuyển đổi phễu khách hàng'
   },
+  'bc-tasks': {
+    label: 'Báo cáo giao việc',
+    icon: <ClipboardCheck className="w-5 h-5" />,
+    color: 'amber',
+    subtitle: 'Tổng hợp công việc giao tay theo người & tiến độ'
+  },
   'huong-dan': {
     label: 'Hướng dẫn sử dụng',
     icon: <HelpCircle className="w-5 h-5" />,
@@ -211,6 +217,7 @@ const getGroupIdFromTab = (tab: TabId): string => {
     case 'bc-inventory': return 'grp_inventory';
     case 'bc-audit': return 'grp_reconciliation';
     case 'bc-leads': return 'grp_admission';
+    case 'bc-tasks': return 'grp_tasks';
     default: return 'grp_overview';
   }
 };
@@ -673,6 +680,7 @@ function AppInner() {
               'grp_inventory': 'bc-inventory',
               'grp_reconciliation': 'bc-audit',
               'grp_admission': 'bc-leads',
+              'grp_tasks': 'bc-tasks',
             };
             if (tabMap[newGroupId]) {
               handleTabChange(tabMap[newGroupId]);

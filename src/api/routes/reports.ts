@@ -73,7 +73,8 @@ reportsRouter.post('/reports/run', async (req, res) => {
       invItemsRaw,
       invCategoriesRaw,
       invStocksRaw,
-      invMovementsRaw
+      invMovementsRaw,
+      assignedTasksRaw
     ] = await Promise.all([
       prisma.student.findMany({ include: { guardianContacts: true } }),
       prisma.class.findMany(),
@@ -92,7 +93,8 @@ reportsRouter.post('/reports/run', async (req, res) => {
       prisma.inventoryItem.findMany({ include: { category: true } }),
       prisma.inventoryCategory.findMany(),
       prisma.inventoryStock.findMany({ include: { item: true, location: true } }),
-      prisma.inventoryMovement.findMany({ include: { item: true, fromLocation: true, toLocation: true, relatedStudent: true, relatedStaff: true, supplier: true } })
+      prisma.inventoryMovement.findMany({ include: { item: true, fromLocation: true, toLocation: true, relatedStudent: true, relatedStaff: true, supplier: true } }),
+      prisma.assignedTask.findMany()
     ]);
 
     // 2. Format database objects to match V1 Types expected by the report engine
@@ -379,6 +381,14 @@ reportsRouter.post('/reports/run', async (req, res) => {
       return { id: m.id, movementDate: m.movementDate, movementType: m.movementType, itemId: m.itemId, itemCode: it?.code || '', itemName: m.item?.name || '', unit: m.item?.unit || '', categoryName: invCatName(it), fromLocationName: m.fromLocation?.name || '', toLocationName: m.toLocation?.name || '', quantity: m.quantity || 0, unitCost: m.unitCost || 0, unitSalePrice: m.unitSalePrice || 0, totalAmount: m.totalAmount || 0, studentId: m.relatedStudentId || undefined, studentName: m.relatedStudent?.name || '', staffName: m.relatedStaff?.name || '', paymentStatus: m.paymentStatus, issued: m.issued !== false, paymentDate: m.paymentDate || undefined, paymentMethod: m.paymentMethod || undefined, createdBy: m.createdBy || '', supplierId: m.supplierId || undefined, supplierName: m.supplier?.name || '' };
     });
     const inventoryCategories = invCategoriesRaw.map(c => ({ id: c.id, name: c.name }));
+    const assignedTasks = (assignedTasksRaw as any[]).map((t: any) => ({
+      id: t.id, title: t.title, content: t.content || undefined,
+      dueDate: t.dueDate || undefined, priority: t.priority, status: t.status,
+      assigneeUserId: t.assigneeUserId, assigneeName: t.assigneeName,
+      assignedByName: t.assignedByName || undefined, completionNote: t.completionNote || undefined,
+      completedAt: t.completedAt ? new Date(t.completedAt).toISOString() : undefined,
+      createdAt: t.createdAt ? new Date(t.createdAt).toISOString() : undefined,
+    }));
 
     const reportParams: ReportParams = {
       students,
@@ -398,6 +408,7 @@ reportsRouter.post('/reports/run', async (req, res) => {
       inventoryStocks,
       inventoryMovements,
       inventoryCategories,
+      assignedTasks,
       filters: filters || {}
     };
 
