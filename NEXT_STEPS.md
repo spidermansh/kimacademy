@@ -65,7 +65,7 @@
 4. Cờ cột `noTotal` → dòng TỔNG CỘNG (web + Excel) bỏ qua cột %/lũy kế (rateValue, runningPaid/Remaining, Tồn lũy kế Kardex).
 
 **✅ P2 — Nhất quán & chuẩn hoá (XONG, commit `e7ef5b1`):**
-5. Cơ sở lương: GHI CHÚ rõ P&L=gross (accrual) vs Tổng quan=net (cash) — khác biệt đúng bản chất, không đổi số. *(Còn để ngỏ cho chủ dự án: có muốn center_finance_summary "earned profit" dùng gross thay net không — quyết định kế toán.)*
+5. Cơ sở lương: GHI CHÚ rõ P&L=gross (accrual) vs Tổng quan=net (cash) — khác biệt đúng bản chất, không đổi số. → **ĐÃ CHỐT: earned-profit dùng GROSS** (triển khai ở P3-bis mục 12-14).
 6. Đã thay literal phân loại bằng hằng số `isTuitionRevenue`/`isInternalTransfer`/`isOnlineTuition`/`isOnlineStudy` (thêm `REVENUE_CATEGORY_TUITION_ONLINE`/`STUDY_TYPE_ONLINE` vào constants.ts).
 7. `tuition_payment_history` đã loại "Chuyển số dư".
 8. Export Excel: đã ghi bộ lọc kho (Mặt hàng/Nhóm/Kho) vào sheet Thông tin; "Người xuất" theo `auth.getUser()`.
@@ -85,7 +85,7 @@
     - "Doanh thu thực **theo NGÀY (tổng hợp)**" — tổng earned mỗi ngày (hiện `earned_tuition_detail` là từng dòng HV, chưa cộng theo ngày).
     - (tuỳ chọn) "Doanh thu thực **theo giáo viên**" (quy earned qua lớp phụ trách).
     - **Lưu ý:** nhiều BC tài chính chi tiết ĐÃ CÓ ở nhóm "Thu chi & lợi nhuận" (`earned_tuition_detail`, `cash_income_detail`, `pnl_monthly_summary`, `profit_earned_object`, `profit_cash_object`) → ưu tiên DẪN người dùng tới đó + đếm tab (mục 11), tránh làm trùng.
-14. **Chốt quyết định kế toán TRƯỚC khi làm 12-13:** "Lợi nhuận thực" trừ lương **gross** (chuẩn accrual) hay **net** (đang dùng)? (xem P2 mục 5).
+14. ✅ **ĐÃ CHỐT (chủ dự án): "Lợi nhuận thực" trừ lương GROSS (chuẩn accrual).** Khi làm 12-13: báo cáo "Doanh thu thực tháng" dùng gross, ĐỒNG THỜI sửa `center_finance_summary` (dòng "Lợi nhuận thực") từ net → gross để khớp P&L nhóm Thu chi. Ghi quyết định vào DECISIONS khi triển khai. (Giải quyết luôn P2 mục 5.)
 15. **(Rà soát trùng)** Công nợ/chưa thực hiện đang có ở 3 chỗ: `center_tuition_unearned_detail` (Tổng quan) ~ `tuition_unearned_summary` + `tuition_by_class` (Học phí) → cân nhắc gộp hoặc dẫn.
 
 **Cần xác minh:** `audit_logs_detail` đọc `l.details` — đối chiếu shape thật của AuditLog (lưu `oldValue/newValue` jsonb), kẻo cột "Chi tiết" luôn ra "—".
