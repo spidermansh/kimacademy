@@ -76,7 +76,7 @@ export interface ReportDefinition {
   description: string;
   type: 'summary' | 'detail' | 'object';
   filters: ('month' | 'dateRange' | 'class' | 'student' | 'teacher' | 'paymentMethod' | 'revenueCategory' | 'expenseCategory' | 'staff' | 'classStatus' | 'reconciliationStatus' | 'search' | 'invItem' | 'invCategory' | 'invLocation')[];
-  columns: { key: string; label: string; align?: 'left' | 'right' | 'center'; format?: 'currency' | 'date' | 'number' | 'text' }[];
+  columns: { key: string; label: string; align?: 'left' | 'right' | 'center'; format?: 'currency' | 'date' | 'number' | 'text'; noTotal?: boolean }[];
   compute: (params: ReportParams) => any[];
   implemented: boolean;
 }
@@ -525,7 +525,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         id: 'student_absent_frequent',
         implemented: true,
         name: 'Báo cáo học viên vắng nhiều',
-        description: 'Học viên vắng từ 2 buổi học liên tục gần nhất trở lên.',
+        description: 'Học viên vắng KHÔNG phép từ 2 buổi liên tục gần nhất trở lên (vắng có phép không tính).',
         type: 'object',
         filters: ['class', 'search'],
         columns: [
@@ -555,11 +555,12 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
 
               if (records.length < 2) return null;
               
+              // Chỉ tính vắng KHÔNG phép (absent) liên tục; gặp present hoặc excused (đã xin phép) thì dừng.
               let consec = 0;
               for (const r of records) {
-                if (r.status === 'absent' || r.status === 'excused') {
+                if (r.status === 'absent') {
                   consec++;
-                } else if (r.status === 'present') {
+                } else {
                   break;
                 }
               }
@@ -649,14 +650,15 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ students, enrollments = [], filters }) => {
           return students
             .filter(s => {
-              // 1. Ưu tiên admissionStatus === 'waiting_class'
-              // 2. Xét không có enrollment active hoặc className rỗng
+              // Loại HV đã nghỉ/tạm nghỉ — không còn "chờ xếp lớp".
+              if (s.status === 'left' || s.status === 'suspended') return false;
+              // "Chờ xếp lớp" = chưa có enrollment đang hoạt động, hoặc được đánh dấu chờ lớp.
+              // (KHÔNG dựa vào s.className rỗng — trường này có thể cũ/trống dù HV đã có lớp.)
               const hasActiveEnroll = enrollments.some(e => e.studentId === s.id && e.isActive);
-              const isWaiting = s.admissionStatus === 'waiting_class' || 
-                                !hasActiveEnroll ||
-                                !s.className || 
-                                s.className.trim() === '' || 
-                                s.className === 'Chưa xếp lớp';
+              const isWaiting =
+                s.status === 'waiting_class' ||
+                s.admissionStatus === 'waiting_class' ||
+                !hasActiveEnroll;
               if (!isWaiting) return false;
               if (filters.searchQuery) {
                 const q = filters.searchQuery.toLowerCase();
@@ -816,7 +818,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
           { key: 'total', label: 'Số buổi điểm danh', align: 'right', format: 'number' },
           { key: 'present', label: 'Số buổi đi học', align: 'right', format: 'number' },
-          { key: 'rateValue', label: 'Tỷ lệ chuyên cần', align: 'right', format: 'number' }
+          { key: 'rateValue', label: 'Tỷ lệ chuyên cần', align: 'right', format: 'number', noTotal: true }
         ],
         compute: ({ students, attendance, enrollments = [], filters }) => {
           return students
@@ -894,8 +896,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'status', label: 'Trạng thái / Nội dung', align: 'left', format: 'text' },
           { key: 'sessionsAdded', label: 'Số buổi đóng', align: 'right', format: 'number' },
           { key: 'sessionsDeducted', label: 'Số buổi trừ', align: 'right', format: 'number' },
-          { key: 'runningPaid', label: 'Buổi đã đóng (lũy kế)', align: 'right', format: 'number' },
-          { key: 'runningRemaining', label: 'Buổi còn lại', align: 'right', format: 'number' },
+          { key: 'runningPaid', label: 'Buổi đã đóng (lũy kế)', align: 'right', format: 'number', noTotal: true },
+          { key: 'runningRemaining', label: 'Buổi còn lại', align: 'right', format: 'number', noTotal: true },
           { key: 'note', label: 'Ghi chú', align: 'left', format: 'text' }
         ],
         compute: ({ students, transactions, attendance, filters }) => {
@@ -1444,10 +1446,10 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'amount', label: 'Số tiền', align: 'right', format: 'currency' },
           { key: 'ratio', label: 'Tỷ lệ %', align: 'right', format: 'text' }
         ],
-        compute: ({ students, transactions, expenses, salaries, attendance, classes, filters }) => {
+        compute: ({ students, transactions, expenses, salaries, attendance, classes, enrollments = [], filters }) => {
           const m = filters.month || new Date().toISOString().slice(0, 7);
 
-          const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes);
+          const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes, enrollments);
           const earnedTuition = revSummary.tuitionEarnedInPeriod;
           const otherRevenue = revSummary.otherRevenueCollectedInPeriod;
           const totalRevenue = revSummary.totalEarnedRevenueInPeriod;
@@ -1666,7 +1668,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'profit', label: 'Lợi nhuận thực', align: 'right', format: 'currency' },
           { key: 'margin', label: 'Tỷ suất (%)', align: 'right', format: 'text' }
         ],
-        compute: ({ students, transactions, expenses, salaries, attendance, classes }) => {
+        compute: ({ students, transactions, expenses, salaries, attendance, classes, enrollments = [] }) => {
           const months: string[] = [];
           const now = new Date();
           for (let i = 5; i >= 0; i--) {
@@ -1675,7 +1677,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           }
 
           return months.map(m => {
-            const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes);
+            const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes, enrollments);
             const earnedTuition = revSummary.tuitionEarnedInPeriod;
             const otherRevenue = revSummary.otherRevenueCollectedInPeriod;
             const totalRev = revSummary.totalEarnedRevenueInPeriod;
@@ -1714,7 +1716,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'cashProfit', label: 'Lợi nhuận dòng tiền', align: 'right', format: 'currency' },
           { key: 'margin', label: 'Tỷ suất dòng tiền', align: 'right', format: 'text' }
         ],
-        compute: ({ students, transactions, expenses, salaries, attendance, classes }) => {
+        compute: ({ students, transactions, expenses, salaries, attendance, classes, enrollments = [] }) => {
           const months: string[] = [];
           const now = new Date();
           for (let i = 5; i >= 0; i--) {
@@ -1723,7 +1725,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           }
 
           return months.map(m => {
-            const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes);
+            const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes, enrollments);
             const tuitionCollected = revSummary.tuitionCollectedInPeriod;
             const otherRevenue = revSummary.otherRevenueCollectedInPeriod;
             const totalCollected = revSummary.totalCashCollectedInPeriod;
@@ -2567,7 +2569,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'partner', label: 'Diễn giải', align: 'left', format: 'text' },
           { key: 'inQty', label: 'Nhập', align: 'right', format: 'number' },
           { key: 'outQty', label: 'Xuất', align: 'right', format: 'number' },
-          { key: 'balance', label: 'Tồn lũy kế', align: 'right', format: 'number' },
+          { key: 'balance', label: 'Tồn lũy kế', align: 'right', format: 'number', noTotal: true },
         ],
         compute: ({ inventoryMovements = [], filters }) => {
           if (!filters.itemId) return [];

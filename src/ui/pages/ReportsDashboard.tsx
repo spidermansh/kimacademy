@@ -201,14 +201,14 @@ export default function ReportsDashboard({
   // Totals Row calculation
   const hasTotals = useMemo(() => {
     if (!activeReport || !activeReport.implemented || reportData.length === 0) return false;
-    return activeReport.columns.some(col => col.format === 'currency' || col.format === 'number');
+    return activeReport.columns.some(col => (col.format === 'currency' || col.format === 'number') && !col.noTotal);
   }, [activeReport, reportData]);
 
   const totals = useMemo(() => {
     if (!hasTotals || !activeReport) return {};
     const t: Record<string, number> = {};
     activeReport.columns.forEach(col => {
-      if (col.format === 'currency' || col.format === 'number') {
+      if ((col.format === 'currency' || col.format === 'number') && !col.noTotal) {
         t[col.key] = reportData.reduce((sum, row) => {
           const val = Number(row[col.key]);
           return sum + (isNaN(val) ? 0 : val);
@@ -327,7 +327,7 @@ export default function ReportsDashboard({
     if (hasTotals) {
       const totalRow = activeReport.columns.map((col, idx) => {
         if (idx === 0) return 'TỔNG CỘNG';
-        if (col.format === 'currency' || col.format === 'number') {
+        if ((col.format === 'currency' || col.format === 'number') && !col.noTotal) {
           return totals[col.key] || 0;
         }
         return '';
@@ -924,7 +924,7 @@ export default function ReportsDashboard({
                         >
                           {idx === 0 ? (
                             'TỔNG CỘNG'
-                          ) : col.format === 'currency' || col.format === 'number' ? (
+                          ) : (col.format === 'currency' || col.format === 'number') && !col.noTotal ? (
                             formatReportCell(totals[col.key], col.format)
                           ) : (
                             ''
