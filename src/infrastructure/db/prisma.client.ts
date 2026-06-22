@@ -34,7 +34,7 @@ const adapter = new PrismaPg(pool);
 const DATE_ONLY_FIELDS = new Set([
   'startDate', 'endDate', 'date', 'paymentDate', 'movementDate', 'birthDate',
   'enrollDate', 'registrationDate', 'testScheduleDate', 'testDate', 'dateOfBirth',
-  'effectiveFrom', 'effectiveTo',
+  'effectiveFrom', 'effectiveTo', 'convertedAt',
 ]);
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
