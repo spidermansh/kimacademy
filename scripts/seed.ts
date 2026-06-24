@@ -64,7 +64,12 @@ async function seed() {
     ];
 
     for (const s of students) {
-      const student = await prisma.student.create({ data: s });
+      const student = await prisma.student.create({
+        data: {
+          ...s,
+          createdBy: 'seed'
+        }
+      });
       
       // Create guardian
       await prisma.guardianContact.create({
@@ -111,5 +116,8 @@ async function seed() {
 }
 
 seed()
-  .catch(console.error)
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
   .finally(() => prisma.$disconnect());

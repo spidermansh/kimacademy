@@ -1,0 +1,168 @@
+import { z } from 'zod';
+
+// Ngày dạng YYYY-MM-DD (cho phép chuỗi rỗng bị chặn bởi min(1) ở nơi bắt buộc).
+const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'phải có dạng YYYY-MM-DD');
+const positiveAmount = z.coerce.number().refine((n) => Number.isFinite(n) && n > 0, 'phải là số tiền dương');
+const nonNegativeAmount = z.coerce.number().refine((n) => Number.isFinite(n) && n >= 0, 'phải là số không âm');
+
+// POST /transactions — thu học phí / doanh thu khác.
+export const createTransactionSchema = z
+  .object({
+    amount: positiveAmount,
+    paymentDate: dateString,
+    paymentMethod: z.string().min(1, 'bắt buộc'),
+    revenueCategory: z.string().optional(),
+    studentId: z.string().optional(),
+    enrollmentId: z.string().optional(),
+    className: z.string().optional(),
+    term: z.string().optional(),
+    notes: z.string().optional(),
+    source: z.string().optional(),
+    id: z.string().optional(),
+  })
+  .passthrough();
+
+// POST /tasks — giao việc thủ công.
+export const createTaskSchema = z
+  .object({
+    title: z.string().min(1, 'bắt buộc'),
+    content: z.string().optional(),
+    dueDate: dateString.optional(),
+    priority: z.enum(['low', 'normal', 'high']).optional(),
+    assigneeUserId: z.string().optional(),
+  })
+  .passthrough();
+
+// POST /tasks/:id/status — đổi trạng thái / báo cáo hoàn thành.
+export const updateTaskStatusSchema = z
+  .object({
+    status: z.enum(['pending', 'in_progress', 'done']),
+    completionNote: z.string().optional(),
+  })
+  .passthrough();
+
+// POST /expenses — chi phí vận hành.
+export const createExpenseSchema = z
+  .object({
+    amount: positiveAmount,
+    date: dateString,
+    description: z.string().min(1, 'bắt buộc'),
+    paymentMethod: z.string().min(1, 'bắt buộc'),
+    category: z.string().optional(),
+    isRecurring: z.boolean().optional(),
+    recurringNote: z.string().optional(),
+    approvedBy: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .passthrough();
+
+// POST /enrollments — đăng ký lớp (cho phép feePerSession = 0).
+export const createEnrollmentSchema = z
+  .object({
+    studentId: z.string().min(1, 'bắt buộc'),
+    classId: z.string().min(1, 'bắt buộc'),
+    feePerSession: nonNegativeAmount,
+    startDate: z.string().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .passthrough();
+
+// POST /users — tạo tài khoản (admin).
+export const createUserSchema = z
+  .object({
+    username: z.string().min(1, 'bắt buộc'),
+    password: z.string().min(1, 'bắt buộc'),
+    name: z.string().min(1, 'bắt buộc'),
+    role: z.string().min(1, 'bắt buộc'),
+  })
+  .passthrough();
+
+// POST /classes — tạo lớp học.
+export const createClassSchema = z
+  .object({
+    name: z.string().min(1, 'bắt buộc'),
+    teacherId: z.string().min(1, 'bắt buộc'),
+  })
+  .passthrough();
+
+// POST /staff — tạo nhân sự.
+export const createStaffSchema = z
+  .object({
+    name: z.string().min(1, 'bắt buộc'),
+    role: z.string().min(1, 'bắt buộc'),
+  })
+  .passthrough();
+
+// POST /teaching-logs — chấm công giảng dạy thủ công.
+export const createTeachingLogSchema = z
+  .object({
+    staffId: z.string().min(1, 'bắt buộc'),
+    classId: z.string().min(1, 'bắt buộc'),
+    date: dateString,
+  })
+  .passthrough();
+
+// POST /salary-advances — tạm ứng lương.
+export const createSalaryAdvanceSchema = z
+  .object({
+    staffId: z.string().min(1, 'bắt buộc'),
+    amount: positiveAmount,
+    date: dateString,
+  })
+  .passthrough();
+
+// POST /admission-leads — tạo lead tuyển sinh.
+export const createAdmissionLeadSchema = z
+  .object({
+    studentName: z.string().min(1, 'bắt buộc'),
+    parentPhone: z.string().min(1, 'bắt buộc'),
+  })
+  .passthrough();
+
+// POST /inventory/movements — nhập/xuất kho.
+export const createInventoryMovementSchema = z
+  .object({
+    movementType: z.string().min(1, 'bắt buộc'),
+    itemId: z.string().min(1, 'bắt buộc'),
+    quantity: z.coerce.number().refine((n) => Number.isFinite(n) && n !== 0, 'phải khác 0'),
+    movementDate: dateString,
+  })
+  .passthrough();
+
+// POST /daily-close — chốt ca cuối ngày.
+export const dailyCloseSchema = z
+  .object({
+    date: dateString,
+    summary: z.union([z.string(), z.record(z.string(), z.any())]),
+  })
+  .passthrough();
+
+// ===== Cập nhật (PUT) — field optional, chỉ kiểm định dạng/giá trị =====
+
+// PUT /enrollments/:id/fee — đổi học phí (ảnh hưởng sổ cái).
+export const updateEnrollmentFeeSchema = z
+  .object({
+    feePerSession: nonNegativeAmount,
+    feeChangeMode: z.enum(['retroactive', 'prospective']).optional(),
+  })
+  .passthrough();
+
+// PUT /expenses/:id — sửa chi phí.
+export const updateExpenseSchema = z
+  .object({
+    amount: positiveAmount.optional(),
+    date: dateString.optional(),
+    description: z.string().min(1).optional(),
+    paymentMethod: z.string().min(1).optional(),
+    category: z.string().optional(),
+  })
+  .passthrough();
+
+// PUT /salary-advances/:id — sửa tạm ứng.
+export const updateSalaryAdvanceSchema = z
+  .object({
+    amount: positiveAmount.optional(),
+    date: dateString.optional(),
+    reason: z.string().optional(),
+  })
+  .passthrough();

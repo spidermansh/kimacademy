@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { writeAudit } from '../utils/audit';
 
 export const settingsRouter = Router();
 
@@ -62,7 +63,7 @@ settingsRouter.put('/settings', requireAdmin, async (req, res) => {
           valueType,
           value: val,
           effectiveFrom: new Date().toISOString().slice(0, 10),
-          createdBy: req.user?.name || req.user?.username || 'admin'
+          createdBy: req.user?.name || req.user?.username || 'admin', createdById: req.user?.userId || null
         }
       });
     }
@@ -128,19 +129,16 @@ settingsRouter.post('/system-parameters', requireAdmin, async (req, res) => {
         valueType,
         value: stringVal,
         effectiveFrom: effectiveFrom || new Date().toISOString().slice(0, 10),
-        createdBy: req.user?.name || req.user?.username || 'admin'
+        createdBy: req.user?.name || req.user?.username || 'admin', createdById: req.user?.userId || null
       }
     });
 
     // Add audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'UPDATE_SYSTEM_PARAMETER',
-        entity: 'system_parameter',
-        entityId: updated.id,
-        details: `Cập nhật tham số ${key} thành ${value}. Lý do: ${reason || 'Không có'}`,
-        user: req.user?.name || req.user?.username || 'admin'
-      }
+    await writeAudit(prisma, req, {
+      action: 'UPDATE_SYSTEM_PARAMETER',
+      entity: 'system_parameter',
+      entityId: updated.id,
+      details: `Cập nhật tham số ${key} thành ${value}. Lý do: ${reason || 'Không có'}`,
     });
 
     res.json(updated);
@@ -193,6 +191,7 @@ settingsRouter.post('/audit-logs', async (req, res) => {
         entityId: entityId || '',
         details: details || '',
         user: req.user?.name || req.user?.username || 'unknown',
+        userId: req.user?.userId || null,
       },
     });
     res.status(201).json(created);
@@ -230,9 +229,9 @@ settingsRouter.post('/admin/seed-demo', requireAdmin, async (req, res) => {
       const staff = await prisma.staffMember.findMany({ take: 2 });
       await prisma.class.createMany({
         data: [
-          { name: 'Lớp Starter A', type: 'offline', teacherId: staff[0]?.id || '', room: 'P101', maxStudents: 12, status: 'active', defaultFeePerSession: 150000, scheduleDays: '["Thứ 2","Thứ 4","Thứ 6"]', scheduleTime: '08:00-09:30' },
-          { name: 'Lớp Beginner B', type: 'offline', teacherId: staff[1]?.id || staff[0]?.id || '', room: 'P102', maxStudents: 12, status: 'active', defaultFeePerSession: 180000, scheduleDays: '["Thứ 3","Thứ 5","Thứ 7"]', scheduleTime: '09:30-11:00' },
-          { name: 'Lớp Advanced C', type: 'offline', teacherId: staff[0]?.id || '', room: 'P201', maxStudents: 10, status: 'active', defaultFeePerSession: 250000, scheduleDays: '["Thứ 2","Thứ 4"]', scheduleTime: '14:00-15:30' },
+          { name: 'Lớp Starter A', type: 'offline', teacherId: staff[0]?.id || '', room: 'P101', maxStudents: 12, status: 'active', defaultFeePerSession: 150000, scheduleDays: ['Thứ 2', 'Thứ 4', 'Thứ 6'], scheduleTime: '08:00-09:30' },
+          { name: 'Lớp Beginner B', type: 'offline', teacherId: staff[1]?.id || staff[0]?.id || '', room: 'P102', maxStudents: 12, status: 'active', defaultFeePerSession: 180000, scheduleDays: ['Thứ 3', 'Thứ 5', 'Thứ 7'], scheduleTime: '09:30-11:00' },
+          { name: 'Lớp Advanced C', type: 'offline', teacherId: staff[0]?.id || '', room: 'P201', maxStudents: 10, status: 'active', defaultFeePerSession: 250000, scheduleDays: ['Thứ 2', 'Thứ 4'], scheduleTime: '14:00-15:30' },
         ]
       });
       classesCreated = 3;
@@ -270,7 +269,7 @@ settingsRouter.post('/admin/seed-demo', requireAdmin, async (req, res) => {
         // Enrollment
         const cls = classes[i % classes.length];
         const enrollment = await prisma.enrollment.create({
-          data: { studentId: student.id, classId: cls.id, feePerSession: cls.defaultFeePerSession, startDate: s.enrollDate, isActive: true, feeHistory: '[]', createdBy: 'seed-demo' }
+          data: { studentId: student.id, classId: cls.id, feePerSession: cls.defaultFeePerSession, startDate: s.enrollDate, isActive: true, feeHistory: [], createdBy: 'seed-demo' }
         });
         enrollmentsCreated++;
 

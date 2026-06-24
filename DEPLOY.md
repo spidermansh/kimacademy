@@ -1,104 +1,122 @@
-# Hướng dẫn Triển khai Trực tuyến & Kết nối PostgreSQL Database (Prisma 7)
+﻿# Huong Dan Trien Khai Kim Academy v3 Len Cloud
 
-Tài liệu này hướng dẫn bạn cách thiết lập cơ sở dữ liệu đám mây PostgreSQL miễn phí (hoặc tự lưu trữ) và đưa ứng dụng Kim Academy v3 lên internet qua Render.com để có thể truy cập từ bất kỳ thiết bị nào có kết nối mạng.
+Tai lieu nay dung cho ban v3: React/Vite + Express + Prisma 7 + PostgreSQL.
 
----
+## 1. Kien Truc Khuyen Nghi
 
-## BƯỚC 1: Tạo Cơ sở dữ liệu Đám mây PostgreSQL Miễn phí
+- App/Web service: Render, Railway, Fly.io hoac Google Cloud Run.
+- Database: Neon PostgreSQL, Render PostgreSQL, Supabase Postgres hoac Cloud SQL.
+- Moi truong bat buoc:
+  - `staging`: test migration, test restore, test nghiep vu.
+  - `production`: du lieu that.
+- Production khong dung `prisma db push`; chi dung `prisma migrate deploy`.
 
-Bạn có thể sử dụng bất kỳ nhà cung cấp dịch vụ PostgreSQL đám mây nào. Dưới đây là hai lựa chọn miễn phí phổ biến:
+## 2. Bien Moi Truong
 
-### Lựa chọn A: Sử dụng Neon.tech (Khuyên dùng - Cực kỳ nhanh & ổn định)
-1. Truy cập **[https://neon.tech/](https://neon.tech/)** và đăng ký một tài khoản miễn phí.
-2. Tạo một dự án mới (Project):
-   - Chọn tên bất kỳ (ví dụ: `kim-academy`).
-   - Chọn khu vực gần Việt Nam nhất (ví dụ: `Singapore` hoặc `Asia Pacific`).
-3. Sau khi tạo xong, Neon sẽ hiển thị chuỗi kết nối **Connection String** của bạn.
-4. Chọn định dạng phù hợp với Node.js hoặc Prisma:
-   - Nó sẽ có dạng tương tự như sau:
-     ```text
-     postgresql://neondb_owner:password@ep-cool-breeze-a1b2c3d4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
-     ```
-5. Sao chép và lưu trữ chuỗi kết nối này lại.
+Tao cac bien sau tren cloud provider:
 
-### Lựa chọn B: Sử dụng dịch vụ PostgreSQL tích hợp sẵn trên Render.com
-1. Đăng nhập vào tài khoản **[https://render.com/](https://render.com/)**.
-2. Nhấn nút **New +** ở góc trên bên phải và chọn **PostgreSQL**.
-3. Điền thông tin:
-   - **Name**: `kim-academy-db`
-   - **Region**: Chọn khu vực gần bạn nhất (ví dụ: `Singapore`).
-   - Chọn gói **Free** (Miễn phí).
-4. Nhấn **Create Database**.
-5. Đợi khoảng 1 - 2 phút để Render khởi tạo xong database. Khi hoàn tất, hãy cuộn xuống phần **Connection Connections** và sao chép mục **External Connection String**.
+```env
+NODE_ENV=production
+PORT=10000
+DATABASE_URL="postgresql://user:password@host:5432/dbname?sslmode=require"
+JWT_SECRET="random-secret-it-nhat-32-ky-tu"
+CORS_ORIGIN="https://your-domain.com"
+```
 
----
+Ghi chu:
 
-## BƯỚC 2: Kiểm tra kết nối dưới local (Tùy chọn)
+- Render/Railway thuong tu cap `PORT`; neu co san thi giu theo provider.
+- `JWT_SECRET` bat buoc trong production. Khong dung gia tri mac dinh.
+- `CORS_ORIGIN` co the la nhieu domain, cach nhau bang dau phay.
 
-1. Mở tệp `.env` dưới máy tính của bạn.
-2. Thêm hoặc thay đổi biến sau thành chuỗi kết nối PostgreSQL của bạn:
-   ```env
-   DATABASE_URL="postgresql://user:password@host:port/dbname?sslmode=require"
-   ```
-3. Chạy lệnh để đồng bộ cấu trúc bảng và seed dữ liệu thử nghiệm (nếu muốn):
-   ```bash
-   npx prisma db push
-   npm run seed:demo
-   ```
-4. Khởi động ứng dụng bằng `npm run dev` để kiểm tra mọi hoạt động dưới local.
+## 3. Chuan Bi Database
 
----
+### Tao database cloud
 
-## BƯỚC 3: Đẩy mã nguồn lên GitHub cá nhân
+1. Tao PostgreSQL tren Neon/Render/Supabase.
+2. Chon region gan Viet Nam, vi du Singapore neu co.
+3. Copy connection string co `sslmode=require`.
+4. Tao rieng database/branch cho staging.
 
-1. Bạn đã có repo trên GitHub (`spidermansh/kimacademy`).
-2. Mở terminal tại thư mục dự án và chạy các lệnh để lưu và đẩy code mới lên:
-   ```bash
-   git add -A
-   git commit -m "feat: upgrade to v3 (PostgreSQL and Prisma 7 rewrite)"
-   git push origin main
-   ```
+### Tao migration lan dau
 
----
+Chay local voi `DATABASE_URL` tro den database dev/staging:
 
-## BƯỚC 4: Triển khai trực tuyến lên Render.com
+```bash
+npm install
+npx prisma generate
+npx prisma migrate dev --name init
+```
 
-Render.com sẽ tự động lấy code mới nhất từ GitHub của bạn và thực hiện build.
+Commit thu muc `prisma/migrations`.
 
-1. Truy cập **[https://render.com/](https://render.com/)** và đăng nhập.
-2. Nếu bạn **đã có một Web Service** trước đó cho Kim Academy:
-   - Click vào Web Service đó.
-   - Chọn mục **Environment** ở cột bên trái.
-   - **Xóa** biến môi trường cũ `MONGODB_URI` nếu có.
-   - Thêm biến môi trường mới:
-     - **Key**: `DATABASE_URL`
-     - **Value**: Dán chuỗi kết nối PostgreSQL lấy được ở **Bước 1** vào đây.
-   - Chọn mục **Settings** ở cột bên trái và cập nhật các thông số cấu hình build:
-     - **Build Command**: `npm install && npx prisma generate && npx prisma db push && npm run build`
-     - **Start Command**: `npm start`
-   - Nhấn **Save Changes**.
-   - Nhấp vào nút **Manual Deploy** ở góc phải và chọn **Clear Cache and Deploy**.
+## 4. Lenh Build/Start Tren Cloud
 
-3. Nếu bạn **tạo Web Service mới**:
-   - Nhấn nút **New +** ở góc trên bên phải và chọn **Web Service**.
-   - Chọn repository GitHub của bạn (`kimacademy`).
-   - Cấu hình các thông số sau:
-     - **Name**: `kim-academy-finance-v3`
-     - **Region**: `Singapore` (hoặc khu vực gần nhất)
-     - **Branch**: `main`
-     - **Runtime**: `Node`
-     - **Build Command**: `npm install && npx prisma generate && npx prisma db push && npm run build`
-     - **Start Command**: `npm start`
-     - **Instance Type**: Chọn **Free**.
-   - Nhấn vào **Advanced** hoặc tab **Environment**, thêm biến môi trường sau:
-     - **Key**: `DATABASE_URL`
-     - **Value**: Dán chuỗi kết nối PostgreSQL đám mây của bạn.
-   - Nhấn **Create Web Service** ở cuối trang.
+Build command:
 
----
+```bash
+npm ci && npx prisma generate && npx prisma migrate deploy && npm run build
+```
 
-## BƯỚC 5: Kiểm tra kết quả
+Start command:
 
-1. Đợi khoảng 3 - 5 phút để Render tải mã nguồn, cài đặt các thư viện, chạy lệnh `prisma db push` (để tự động tạo các bảng dữ liệu trên PostgreSQL) và build ứng dụng.
-2. Khi trạng thái chuyển sang màu xanh lá cây `Live`, bạn có thể nhấp vào liên kết công khai của Render để sử dụng ứng dụng.
-3. Chúc mừng! Ứng dụng Kim Academy v3 với kiến trúc cơ sở dữ liệu PostgreSQL + Prisma 7 đã được deploy trực tuyến hoàn toàn miễn phí và tự động!
+```bash
+npm start
+```
+
+## 5. Quy Trinh Deploy An Toan
+
+1. Deploy len staging truoc.
+2. Kiem tra `/api/health`.
+3. Dang nhap admin.
+4. Test nghiep vu can ban:
+   - Tao nhan su.
+   - Tao lop.
+   - Tao hoc vien.
+   - Ghi danh hoc vien vao lop.
+   - Thu hoc phi.
+   - Diem danh.
+   - Kiem tra so buoi/so du hoc phi.
+   - Tao nhap/xuat kho.
+   - Xem bao cao.
+5. Chi deploy production khi staging pass.
+
+## 6. Checklist Truoc Production
+
+- `npm run lint` pass.
+- `npm run build` pass.
+- `npm test` pass voi test database rieng.
+- Co `prisma/migrations`.
+- Production build dung `prisma migrate deploy`.
+- `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN` da cau hinh.
+- Backup database tu dong da bat.
+- Restore da duoc test tren staging.
+- Khong test restore tren production.
+
+## 7. Rollback
+
+Neu deploy loi:
+
+1. Redeploy commit truoc do.
+2. Khong chay rollback DB tuy tien neu migration da thay doi schema.
+3. Neu du lieu hong, restore tu snapshot database gan nhat vao staging de kiem tra truoc.
+4. Sau khi xac nhan snapshot dung moi restore production.
+
+## 8. Lenh Local Huu Ich
+
+```bash
+npm install
+npx prisma generate
+npm run lint
+npm run build
+npm test
+```
+
+Chay dev:
+
+```bash
+npm run dev
+```
+
+Frontend: http://localhost:3025
+Backend: http://localhost:3021

@@ -2,6 +2,8 @@ import { Router } from 'express';
 import bcryptjs from 'bcryptjs';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { validateBody } from '../utils/validate';
+import { createUserSchema } from '../schemas';
 
 export const usersRouter = Router();
 
@@ -12,6 +14,15 @@ usersRouter.use(requireAdmin);
 usersRouter.get('/users', async (req, res) => {
   try {
     const list = await prisma.user.findMany({
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        role: true,
+        staffId: true,
+        createdAt: true,
+        updatedAt: true
+      },
       orderBy: { createdAt: 'desc' }
     });
     res.json(list);
@@ -20,11 +31,8 @@ usersRouter.get('/users', async (req, res) => {
   }
 });
 
-usersRouter.post('/users', async (req, res) => {
+usersRouter.post('/users', validateBody(createUserSchema), async (req, res) => {
   const { username, password, name, role } = req.body;
-  if (!username || !password || !name || !role) {
-    return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin' });
-  }
 
   try {
     const existing = await prisma.user.findUnique({
@@ -34,7 +42,7 @@ usersRouter.post('/users', async (req, res) => {
       return res.status(400).json({ message: 'Tên đăng nhập đã tồn tại' });
     }
 
-    const hashedPassword = bcryptjs.hashSync(password, 10);
+    const hashedPassword = await bcryptjs.hash(password, 10);
     const created = await prisma.user.create({
       data: {
         username: username.toLowerCase(),
@@ -44,7 +52,8 @@ usersRouter.post('/users', async (req, res) => {
       }
     });
 
-    res.status(201).json(created);
+    const { password: _password, ...safeUser } = created;
+    res.status(201).json(safeUser);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -73,7 +82,11 @@ usersRouter.put('/users/:id', async (req, res) => {
       data.username = username.toLowerCase();
     }
 
-    if (password) data.password = bcryptjs.hashSync(password, 10);
+    if (password) {
+      data.password = await bcryptjs.hash(password, 10);
+      // Đổi mật khẩu → thu hồi mọi phiên cũ của user đó.
+      data.tokenVersion = { increment: 1 };
+    }
     if (name) data.name = name;
     if (role) data.role = role;
 
@@ -82,7 +95,8 @@ usersRouter.put('/users/:id', async (req, res) => {
       data
     });
 
-    res.json(updated);
+    const { password: _password, ...safeUser } = updated;
+    res.json(safeUser);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

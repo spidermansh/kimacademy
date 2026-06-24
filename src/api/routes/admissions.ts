@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { generateUniqueCode } from '../utils/codes';
+import { monthRange } from '../utils/dates';
+import { validateBody } from '../utils/validate';
+import { createAdmissionLeadSchema } from '../schemas';
 
 export const admissionsRouter = Router();
 
 admissionsRouter.use(authenticateToken);
+const requireAdmissionRole = requireRole(['admin', 'staff', 'accountant']);
 
 // GET all admission leads
 admissionsRouter.get('/admission-leads', async (req, res) => {
@@ -56,11 +61,8 @@ admissionsRouter.get('/admission-leads/:id', async (req, res) => {
 });
 
 // POST create admission lead
-admissionsRouter.post('/admission-leads', async (req, res) => {
+admissionsRouter.post('/admission-leads', requireAdmissionRole, validateBody(createAdmissionLeadSchema), async (req, res) => {
   const data = req.body;
-  if (!data.studentName || !data.parentPhone) {
-    return res.status(400).json({ message: 'Thiếu tên học viên hoặc SĐT phụ huynh' });
-  }
 
   try {
     // Generate lead code if not provided
@@ -86,7 +88,7 @@ admissionsRouter.post('/admission-leads', async (req, res) => {
         testScheduleTime: data.testScheduleTime || null,
         testAssignee: data.testAssignee || null,
         testScheduleNote: data.testScheduleNote || null,
-        createdBy: req.user?.name || req.user?.username || 'unknown'
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
       }
     });
 
@@ -97,7 +99,7 @@ admissionsRouter.post('/admission-leads', async (req, res) => {
 });
 
 // PUT update admission lead
-admissionsRouter.put('/admission-leads/:id', async (req, res) => {
+admissionsRouter.put('/admission-leads/:id', requireAdmissionRole, async (req, res) => {
   const { id } = req.params;
   const data = req.body;
 
@@ -145,7 +147,7 @@ admissionsRouter.put('/admission-leads/:id', async (req, res) => {
 });
 
 // POST schedule test
-admissionsRouter.post('/admission-leads/:id/schedule-test', async (req, res) => {
+admissionsRouter.post('/admission-leads/:id/schedule-test', requireAdmissionRole, async (req, res) => {
   const { id } = req.params;
   const { testScheduleDate, testScheduleTime, testAssignee, testScheduleNote } = req.body;
 
@@ -167,7 +169,7 @@ admissionsRouter.post('/admission-leads/:id/schedule-test', async (req, res) => 
 });
 
 // POST save test result
-admissionsRouter.post('/admission-leads/:id/test-result', async (req, res) => {
+admissionsRouter.post('/admission-leads/:id/test-result', requireAdmissionRole, async (req, res) => {
   const { id } = req.params;
   const { testDate, testType, testScore, suggestedLevel, testNote, testResultNote } = req.body;
 
@@ -191,7 +193,7 @@ admissionsRouter.post('/admission-leads/:id/test-result', async (req, res) => {
 });
 
 // POST reject lead
-admissionsRouter.post('/admission-leads/:id/reject', async (req, res) => {
+admissionsRouter.post('/admission-leads/:id/reject', requireAdmissionRole, async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
 
@@ -210,7 +212,7 @@ admissionsRouter.post('/admission-leads/:id/reject', async (req, res) => {
 });
 
 // POST accept waiting class
-admissionsRouter.post('/admission-leads/:id/accept-waiting-class', async (req, res) => {
+admissionsRouter.post('/admission-leads/:id/accept-waiting-class', requireAdmissionRole, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -225,7 +227,7 @@ admissionsRouter.post('/admission-leads/:id/accept-waiting-class', async (req, r
 });
 
 // POST convert lead to official student (with duplicate checking)
-admissionsRouter.post('/admission-leads/:id/convert', async (req, res) => {
+admissionsRouter.post('/admission-leads/:id/convert', requireAdmissionRole, async (req, res) => {
   const { id } = req.params;
   const { classId, confirmDuplicate } = req.body;
 
@@ -262,9 +264,12 @@ admissionsRouter.post('/admission-leads/:id/convert', async (req, res) => {
       dbClass = await prisma.class.findUnique({ where: { id: lead.assignedClassId } });
     }
 
+    const studentCode = await generateUniqueCode(prisma.student, 'HV');
+
     // 3. Create Student
     const student = await prisma.student.create({
       data: {
+        code: studentCode,
         name: lead.studentName,
         vietnameseName: lead.studentName,
         englishName: lead.suggestedLevel || '',
@@ -273,7 +278,7 @@ admissionsRouter.post('/admission-leads/:id/convert', async (req, res) => {
         enrollDate: new Date().toISOString().slice(0, 10),
         admissionLeadId: lead.id,
         notes: `Convert từ hồ sơ tuyển sinh mã ${lead.leadCode || ''}`,
-        createdBy: req.user?.name || req.user?.username || 'unknown'
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
       }
     });
 
@@ -299,8 +304,8 @@ admissionsRouter.post('/admission-leads/:id/convert', async (req, res) => {
           feePerSession: dbClass.defaultFeePerSession,
           startDate: new Date().toISOString().slice(0, 10),
           isActive: true,
-          createdBy: req.user?.name || req.user?.username || 'unknown',
-          feeHistory: '[]'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
+          feeHistory: []
         }
       });
 
@@ -345,7 +350,7 @@ admissionsRouter.get('/admission-summary', async (req, res) => {
 
   try {
     const leadsInMonth = await prisma.admissionLead.findMany({
-      where: { registrationDate: { startsWith: m as string } }
+      where: { registrationDate: monthRange(m as string) }
     });
 
     const total = leadsInMonth.length;

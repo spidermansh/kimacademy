@@ -1,10 +1,17 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { PAYMENT_METHOD_BALANCE_TRANSFER } from '../../shared/constants';
+import { validateBody } from '../utils/validate';
+import { createEnrollmentSchema, updateEnrollmentFeeSchema } from '../schemas';
+import { recalcEnrollmentLedger } from '../services/ledger';
+import { parseFeeHistory } from '../../shared/business/tuition';
+import { writeAudit } from '../utils/audit';
 
 export const enrollmentsRouter = Router();
 
 enrollmentsRouter.use(authenticateToken);
+const requireAcademicRole = requireRole(['admin', 'staff', 'accountant']);
 
 // GET all enrollments
 enrollmentsRouter.get('/enrollments', async (req, res) => {
@@ -48,7 +55,7 @@ enrollmentsRouter.get('/enrollments', async (req, res) => {
       endDate: e.endDate || '',
       isActive: e.isActive,
       transferNote: e.transferNote || '',
-      feeHistory: JSON.parse(e.feeHistory || '[]'),
+      feeHistory: parseFeeHistory(e.feeHistory),
       createdAt: e.createdAt,
       sessionsRemaining: e.ledgerEntries[0]?.sessionsRemaining || 0,
       balance: e.ledgerEntries[0]?.balance || 0
@@ -61,34 +68,35 @@ enrollmentsRouter.get('/enrollments', async (req, res) => {
 });
 
 // POST create enrollment
-enrollmentsRouter.post('/enrollments', async (req, res) => {
+enrollmentsRouter.post('/enrollments', requireAcademicRole, validateBody(createEnrollmentSchema), async (req, res) => {
   const data = req.body;
-  if (!data.studentId || !data.classId || !data.feePerSession) {
-    return res.status(400).json({ message: 'Thiếu thông tin đăng ký' });
-  }
 
   try {
-    const created = await prisma.enrollment.create({
-      data: {
-        studentId: data.studentId,
-        classId: data.classId,
-        feePerSession: Number(data.feePerSession),
-        startDate: data.startDate || new Date().toISOString().slice(0, 10),
-        isActive: data.isActive !== undefined ? data.isActive : true,
-        createdBy: req.user?.name || req.user?.username || 'unknown',
-        feeHistory: '[]'
-      }
-    });
+    const created = await prisma.$transaction(async (tx) => {
+      const enrollment = await tx.enrollment.create({
+        data: {
+          studentId: data.studentId,
+          classId: data.classId,
+          feePerSession: Number(data.feePerSession),
+          startDate: data.startDate || new Date().toISOString().slice(0, 10),
+          isActive: data.isActive !== undefined ? data.isActive : true,
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
+          feeHistory: []
+        }
+      });
 
-    await prisma.tuitionLedgerEntry.create({
-      data: {
-        studentId: data.studentId,
-        enrollmentId: created.id,
-        totalPaid: 0,
-        totalSpent: 0,
-        balance: 0,
-        sessionsRemaining: 0
-      }
+      await tx.tuitionLedgerEntry.create({
+        data: {
+          studentId: data.studentId,
+          enrollmentId: enrollment.id,
+          totalPaid: 0,
+          totalSpent: 0,
+          balance: 0,
+          sessionsRemaining: 0
+        }
+      });
+
+      return enrollment;
     });
 
     res.status(201).json(created);
@@ -98,7 +106,7 @@ enrollmentsRouter.post('/enrollments', async (req, res) => {
 });
 
 // POST class transfer
-enrollmentsRouter.post('/enrollments/transfer', async (req, res) => {
+enrollmentsRouter.post('/enrollments/transfer', requireAcademicRole, async (req, res) => {
   const { studentId, studentName, oldClassName, newClassName, newFeePerSession, transferDate, transferNote } = req.body;
 
   if (!studentId || !newClassName || !transferDate) {
@@ -120,12 +128,13 @@ enrollmentsRouter.post('/enrollments/transfer', async (req, res) => {
       return res.status(400).json({ message: `Không tìm thấy lớp học mới: ${newClassName}` });
     }
 
+    await prisma.$transaction(async (tx) => {
     let oldEnrollmentId = '';
     let oldBalance = 0;
 
     // Close old enrollment if exists
     if (oldClassName) {
-      const oldClass = await prisma.class.findFirst({
+      const oldClass = await tx.class.findFirst({
         where: {
           OR: [
             { id: oldClassName },
@@ -135,13 +144,13 @@ enrollmentsRouter.post('/enrollments/transfer', async (req, res) => {
         }
       });
       if (oldClass) {
-        const oldEnroll = await prisma.enrollment.findFirst({
+        const oldEnroll = await tx.enrollment.findFirst({
           where: { studentId, classId: oldClass.id, isActive: true }
         });
 
         if (oldEnroll) {
           oldEnrollmentId = oldEnroll.id;
-          await prisma.enrollment.update({
+          await tx.enrollment.update({
             where: { id: oldEnroll.id },
             data: {
               isActive: false,
@@ -151,7 +160,7 @@ enrollmentsRouter.post('/enrollments/transfer', async (req, res) => {
           });
 
           // Read old ledger balance
-          const oldLedger = await prisma.tuitionLedgerEntry.findUnique({
+          const oldLedger = await tx.tuitionLedgerEntry.findUnique({
             where: { enrollmentId: oldEnroll.id }
           });
           if (oldLedger) {
@@ -162,21 +171,21 @@ enrollmentsRouter.post('/enrollments/transfer', async (req, res) => {
     }
 
     // Create new enrollment
-    const newEnroll = await prisma.enrollment.create({
+    const newEnroll = await tx.enrollment.create({
       data: {
         studentId,
         classId: newClass.id,
         feePerSession: Number(newFeePerSession),
         startDate: transferDate,
         isActive: true,
-        createdBy: req.user?.name || req.user?.username || 'unknown',
-        feeHistory: '[]',
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
+        feeHistory: [],
         transferNote: `Chuyển từ lớp ${oldClassName || 'Không lớp'}`
       }
     });
 
     // Create new tuition ledger
-    const newLedger = await prisma.tuitionLedgerEntry.create({
+    const newLedger = await tx.tuitionLedgerEntry.create({
       data: {
         studentId,
         enrollmentId: newEnroll.id,
@@ -187,82 +196,53 @@ enrollmentsRouter.post('/enrollments/transfer', async (req, res) => {
       }
     });
 
-    // Carry over balance
-    if (oldBalance > 0 && oldEnrollmentId) {
-      // Deduct from old enrollment
-      await prisma.tuitionTransaction.create({
+    // Carry over balance — mang theo cả số dư dương (còn tiền) lẫn âm (đang nợ),
+    // để công nợ của học viên không bị bỏ lại trên enrollment đã đóng. Ghi 2 bút
+    // toán đối ứng rồi tính lại sổ cái hai bên từ dữ liệu gốc.
+    if (oldBalance !== 0 && oldEnrollmentId) {
+      await tx.tuitionTransaction.create({
         data: {
           studentId,
           enrollmentId: oldEnrollmentId,
           amount: -oldBalance,
           paymentDate: transferDate,
-          paymentMethod: 'Chuyển số dư',
+          paymentMethod: PAYMENT_METHOD_BALANCE_TRANSFER,
           notes: `Chuyển số dư sang lớp ${newClassName}`,
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
 
-      // Update old ledger
-      const oldLedger = await prisma.tuitionLedgerEntry.findUnique({
-        where: { enrollmentId: oldEnrollmentId }
-      });
-      if (oldLedger) {
-        const newPaid = oldLedger.totalPaid - oldBalance;
-        const newBal = newPaid - oldLedger.totalSpent;
-        await prisma.tuitionLedgerEntry.update({
-          where: { enrollmentId: oldEnrollmentId },
-          data: {
-            totalPaid: newPaid,
-            balance: newBal,
-            sessionsRemaining: 0
-          }
-        });
-      }
-
-      // Add to new enrollment
-      await prisma.tuitionTransaction.create({
+      await tx.tuitionTransaction.create({
         data: {
           studentId,
           enrollmentId: newEnroll.id,
           amount: oldBalance,
           paymentDate: transferDate,
-          paymentMethod: 'Chuyển số dư',
+          paymentMethod: PAYMENT_METHOD_BALANCE_TRANSFER,
           notes: `Nhận số dư chuyển từ lớp ${oldClassName}`,
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
 
-      // Update new ledger
-      const newPaid = oldBalance;
-      const newBal = newPaid;
-      const newSessions = newFeePerSession > 0 ? Math.floor(newBal / newFeePerSession) : 0;
-      await prisma.tuitionLedgerEntry.update({
-        where: { enrollmentId: newEnroll.id },
-        data: {
-          totalPaid: newPaid,
-          balance: newBal,
-          sessionsRemaining: newSessions
-        }
-      });
+      await recalcEnrollmentLedger(tx, oldEnrollmentId);
+      await recalcEnrollmentLedger(tx, newEnroll.id);
     }
 
     // Update student's primary class name in student profile
-    await prisma.student.update({
+    await tx.student.update({
       where: { id: studentId },
       data: { status: 'active' }
     });
 
     // Audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'TRANSFER_CLASS',
-        entity: 'student',
-        entityId: studentId,
-        details: `Chuyển lớp học viên ${studentName}: ${oldClassName || ''} -> ${newClassName}`,
-        user: req.user?.name || req.user?.username || 'unknown'
-      }
+    await writeAudit(tx, req, {
+      action: 'TRANSFER_CLASS',
+      entity: 'student',
+      entityId: studentId,
+      details: `Chuyển lớp học viên ${studentName}: ${oldClassName || ''} -> ${newClassName}`,
     });
 
+    });
     res.json({ success: true, message: 'Chuyển lớp thành công' });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -270,7 +250,7 @@ enrollmentsRouter.post('/enrollments/transfer', async (req, res) => {
 });
 
 // POST add class enrollment
-enrollmentsRouter.post('/enrollments/add-class', async (req, res) => {
+enrollmentsRouter.post('/enrollments/add-class', requireAcademicRole, async (req, res) => {
   const { studentId, studentName, className, feePerSession, startDate } = req.body;
   if (!studentId || !className || !startDate) {
     return res.status(400).json({ message: 'Thiếu thông tin đăng ký lớp' });
@@ -297,28 +277,32 @@ enrollmentsRouter.post('/enrollments/add-class', async (req, res) => {
       return res.status(400).json({ message: 'Học viên đã đăng ký học lớp này' });
     }
 
-    const created = await prisma.enrollment.create({
+    const created = await prisma.$transaction(async (tx) => {
+    const enrollment = await tx.enrollment.create({
       data: {
         studentId,
         classId: cls.id,
         feePerSession: Number(feePerSession),
         startDate,
         isActive: true,
-        createdBy: req.user?.name || req.user?.username || 'unknown',
-        feeHistory: '[]',
+        createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null,
+        feeHistory: [],
         transferNote: 'Đăng ký thêm lớp học'
       }
     });
 
-    await prisma.tuitionLedgerEntry.create({
+    await tx.tuitionLedgerEntry.create({
       data: {
         studentId,
-        enrollmentId: created.id,
+        enrollmentId: enrollment.id,
         totalPaid: 0,
         totalSpent: 0,
         balance: 0,
         sessionsRemaining: 0
       }
+    });
+
+      return enrollment;
     });
 
     res.status(201).json(created);
@@ -328,13 +312,9 @@ enrollmentsRouter.post('/enrollments/add-class', async (req, res) => {
 });
 
 // PUT update enrollment fee (retroactive or prospective)
-enrollmentsRouter.put('/enrollments/:id/fee', async (req, res) => {
+enrollmentsRouter.put('/enrollments/:id/fee', requireAcademicRole, validateBody(updateEnrollmentFeeSchema), async (req, res) => {
   const { id } = req.params;
   const { feePerSession, feeChangeMode } = req.body;
-
-  if (feePerSession === undefined) {
-    return res.status(400).json({ message: 'Thiếu học phí mới' });
-  }
 
   const newFee = Number(feePerSession);
   const changeMode = feeChangeMode || 'retroactive';
@@ -352,7 +332,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', async (req, res) => {
     const oldFee = enrollment.feePerSession;
 
     if (oldFee !== newFee) {
-      const feeHistory = JSON.parse(enrollment.feeHistory || '[]');
+      const feeHistory = parseFeeHistory(enrollment.feeHistory);
       feeHistory.push({
         changedBy: req.user?.name || req.user?.username || 'Hệ thống',
         changedAt: new Date().toISOString(),
@@ -361,18 +341,19 @@ enrollmentsRouter.put('/enrollments/:id/fee', async (req, res) => {
         mode: changeMode
       });
 
-      await prisma.enrollment.update({
+      await prisma.$transaction(async (tx) => {
+      await tx.enrollment.update({
         where: { id },
         data: {
           feePerSession: newFee,
-          feeHistory: JSON.stringify(feeHistory)
+          feeHistory: feeHistory as any
         }
       });
 
       // Update Attendance records:
       if (changeMode === 'retroactive') {
         // Update all attendance records where sessionsDeducted === 1
-        await prisma.attendanceRecord.updateMany({
+        await tx.attendanceRecord.updateMany({
           where: {
             enrollmentId: id,
             sessionsDeducted: 1
@@ -384,7 +365,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', async (req, res) => {
       } else if (changeMode === 'prospective') {
         // Update only today and future attendance records where sessionsDeducted === 1
         const todayStr = new Date().toISOString().slice(0, 10);
-        await prisma.attendanceRecord.updateMany({
+        await tx.attendanceRecord.updateMany({
           where: {
             enrollmentId: id,
             sessionsDeducted: 1,
@@ -396,30 +377,9 @@ enrollmentsRouter.put('/enrollments/:id/fee', async (req, res) => {
         });
       }
 
-      // Recalculate Tuition Ledger
-      const allAttendance = await prisma.attendanceRecord.findMany({
-        where: { enrollmentId: id }
+      // Tính lại sổ cái từ dữ liệu gốc (sau khi đã cập nhật feeApplied ở trên).
+      await recalcEnrollmentLedger(tx, id);
       });
-      const totalSpent = allAttendance.reduce((sum, a) => sum + (a.feeApplied * a.sessionsDeducted), 0);
-
-      const ledger = enrollment.ledgerEntries[0] || await prisma.tuitionLedgerEntry.findUnique({
-        where: { enrollmentId: id }
-      });
-
-      if (ledger) {
-        const balance = ledger.totalPaid - totalSpent;
-        const sessionsRemaining = newFee > 0 ? Math.floor(balance / newFee) : 0;
-
-        await prisma.tuitionLedgerEntry.update({
-          where: { enrollmentId: id },
-          data: {
-            totalSpent,
-            balance,
-            sessionsRemaining,
-            lastUpdatedAt: new Date()
-          }
-        });
-      }
     }
 
     res.json({ success: true, message: 'Cập nhật học phí thành công' });
@@ -429,7 +389,7 @@ enrollmentsRouter.put('/enrollments/:id/fee', async (req, res) => {
 });
 
 // DELETE remove class enrollment (closes it)
-enrollmentsRouter.delete('/enrollments/:id', async (req, res) => {
+enrollmentsRouter.delete('/enrollments/:id', requireAcademicRole, async (req, res) => {
   const { id } = req.params;
   const { endDate } = req.query;
   const dateStr = (endDate as string) || new Date().toISOString().slice(0, 10);

@@ -56,6 +56,7 @@ export interface FeeChangeLog {
 
 export interface Student {
   id: string;
+  code?: string;
   name: string;
   vietnameseName: string;
   englishName: string;
@@ -83,6 +84,7 @@ export interface Student {
 
 export interface Class {
   id: string;
+  code?: string;
   name: string;
   type: ClassType;
   schedule: string;
@@ -128,7 +130,7 @@ export interface Enrollment {
   endDate?: string;
   isActive: boolean;
   transferNote?: string;
-  feeHistory?: string; // JSON String
+  feeHistory?: FeeChangeLog[]; // jsonb (đã parse)
   createdAt: string;
 }
 
@@ -172,6 +174,7 @@ export interface Notification {
 
 export interface StaffMember {
   id: string;
+  code?: string;
   name: string;
   role: 'teacher' | 'office' | 'teaching_assistant';
   phone: string;
@@ -458,8 +461,35 @@ export interface InventoryMovement {
   relatedStaffId?: string;
   relatedRevenueOtherId?: string;
   relatedExpenseId?: string;
+  saleBatchId?: string;
+  saleBatch?: InventorySaleBatch;
+  paymentStatus?: 'not_applicable' | 'unpaid' | 'paid';
+  paymentMethod?: string;
+  paymentDate?: string;
+  paidAt?: string;
+  collectedBy?: string;
   note?: string;
   movementDate: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface InventorySaleBatch {
+  id: string;
+  code: string;
+  classId?: string;
+  className?: string;
+  itemId: string;
+  variantId?: string;
+  fromLocationId?: string;
+  movementDate: string;
+  paymentStatus: 'not_applicable' | 'unpaid' | 'paid';
+  paymentMethod?: string;
+  paymentDate?: string;
+  totalStudents: number;
+  totalQuantity: number;
+  totalAmount: number;
+  note?: string;
   createdAt: string;
   createdBy: string;
 }

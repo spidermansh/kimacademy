@@ -1,10 +1,17 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
-import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth';
+import { generateUniqueCode } from '../utils/codes';
+import { toArray } from '../../shared/json';
+import { monthRange, toDateStr } from '../utils/dates';
+import { validateBody } from '../utils/validate';
+import { createStaffSchema, createTeachingLogSchema, createSalaryAdvanceSchema, updateSalaryAdvanceSchema } from '../schemas';
+import { writeAudit } from '../utils/audit';
 
 export const payrollRouter = Router();
 
 payrollRouter.use(authenticateToken);
+const requirePayrollRole = requireRole(['admin', 'staff', 'accountant']);
 
 // Helper to get system parameters with default fallback
 async function getParameter(key: string, defaultValue: any): Promise<any> {
@@ -38,11 +45,8 @@ payrollRouter.get('/staff', async (req, res) => {
 });
 
 // POST create staff member
-payrollRouter.post('/staff', requireAdmin, async (req, res) => {
+payrollRouter.post('/staff', requireAdmin, validateBody(createStaffSchema), async (req, res) => {
   const data = req.body;
-  if (!data.name || !data.role) {
-    return res.status(400).json({ message: 'Thiếu tên nhân viên hoặc vai trò' });
-  }
 
   try {
     const startMonth = (data.startDate || new Date().toISOString().slice(0, 10)).slice(0, 7);
@@ -55,8 +59,10 @@ payrollRouter.post('/staff', requireAdmin, async (req, res) => {
       otherMonthlyAllowance: Number(data.otherMonthlyAllowance || 0)
     }];
 
+    const code = await generateUniqueCode(prisma.staffMember, 'NV', data.code);
     const created = await prisma.staffMember.create({
       data: {
+        code,
         name: data.name,
         role: data.role,
         phone: data.phone || null,
@@ -77,7 +83,7 @@ payrollRouter.post('/staff', requireAdmin, async (req, res) => {
         applyUnemploymentInsurance: !!data.applyUnemploymentInsurance,
         insuranceBaseSalary: data.insuranceBaseSalary !== undefined ? Number(data.insuranceBaseSalary) : null,
         ratePerHour: Number(data.ratePerHour || 0),
-        salaryHistory: JSON.stringify(initialHistory)
+        salaryHistory: initialHistory
       }
     });
 
@@ -110,21 +116,13 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
       ratePerHrNew !== (existing.ratePerHour || 0) ||
       otherAllowNew !== (existing.otherMonthlyAllowance || 0);
 
-    let salaryHistoryStr = existing.salaryHistory;
+    let salaryHistoryValue: any[] = toArray(existing.salaryHistory);
 
     if (isSalaryChanged) {
-      let history = [];
-      if (existing.salaryHistory) {
-        try {
-          history = JSON.parse(existing.salaryHistory);
-        } catch (e) {
-          history = [];
-        }
-      }
-      if (!Array.isArray(history)) history = [];
+      let history = toArray<any>(existing.salaryHistory);
 
       const targetMonth = data.effectiveMonth || new Date().toISOString().slice(0, 7);
-      
+
       // Filter out existing history entry for the same month to prevent duplicates
       history = history.filter((h: any) => h.effectiveMonth !== targetMonth);
 
@@ -137,7 +135,7 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
         otherMonthlyAllowance: otherAllowNew
       });
 
-      salaryHistoryStr = JSON.stringify(history);
+      salaryHistoryValue = history;
 
       // Create AuditLog entry
       const changes = [];
@@ -154,26 +152,23 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
         changes.push(`Phụ cấp MĐ: ${existing.otherMonthlyAllowance || 0} -> ${otherAllowNew}`);
       }
 
-      await prisma.auditLog.create({
-        data: {
-          action: 'UPDATE_STAFF_SALARY',
-          entity: 'staff',
-          entityId: id,
-          details: `Điều chỉnh lương nhân sự ${existing.name} áp dụng từ tháng ${targetMonth}. Thay đổi: ${changes.join(', ')}`,
-          oldValue: JSON.stringify({
-            baseSalary: existing.baseSalary,
-            ratePerSession: existing.ratePerSession,
-            ratePerHour: existing.ratePerHour,
-            otherMonthlyAllowance: existing.otherMonthlyAllowance
-          }),
-          newValue: JSON.stringify({
-            baseSalary: baseSalNew,
-            ratePerSession: ratePerSessNew,
-            ratePerHour: ratePerHrNew,
-            otherMonthlyAllowance: otherAllowNew
-          }),
-          user: req.user?.name || req.user?.username || 'unknown'
-        }
+      await writeAudit(prisma, req, {
+        action: 'UPDATE_STAFF_SALARY',
+        entity: 'staff',
+        entityId: id,
+        details: `Điều chỉnh lương nhân sự ${existing.name} áp dụng từ tháng ${targetMonth}. Thay đổi: ${changes.join(', ')}`,
+        oldValue: {
+          baseSalary: existing.baseSalary,
+          ratePerSession: existing.ratePerSession,
+          ratePerHour: existing.ratePerHour,
+          otherMonthlyAllowance: existing.otherMonthlyAllowance
+        },
+        newValue: {
+          baseSalary: baseSalNew,
+          ratePerSession: ratePerSessNew,
+          ratePerHour: ratePerHrNew,
+          otherMonthlyAllowance: otherAllowNew
+        },
       });
     }
 
@@ -200,7 +195,7 @@ payrollRouter.put('/staff/:id', requireAdmin, async (req, res) => {
         applyUnemploymentInsurance: data.applyUnemploymentInsurance !== undefined ? !!data.applyUnemploymentInsurance : undefined,
         insuranceBaseSalary: data.insuranceBaseSalary !== undefined ? Number(data.insuranceBaseSalary) : undefined,
         ratePerHour: data.ratePerHour !== undefined ? Number(data.ratePerHour) : undefined,
-        salaryHistory: salaryHistoryStr
+        salaryHistory: salaryHistoryValue
       }
     });
 
@@ -255,7 +250,7 @@ payrollRouter.get('/teaching-logs', async (req, res) => {
     const where: any = {};
     if (staffId) where.staffId = staffId as string;
     if (month) {
-      where.date = { startsWith: month as string };
+      where.date = monthRange(month as string);
     }
 
     const [list, allClasses] = await Promise.all([
@@ -294,11 +289,8 @@ payrollRouter.get('/teaching-logs', async (req, res) => {
 });
 
 // POST create manual teaching log
-payrollRouter.post('/teaching-logs', async (req, res) => {
+payrollRouter.post('/teaching-logs', requirePayrollRole, validateBody(createTeachingLogSchema), async (req, res) => {
   const data = req.body;
-  if (!data.staffId || !data.date || !data.classId) {
-    return res.status(400).json({ message: 'Thiếu thông tin chấm công' });
-  }
 
   try {
     const created = await prisma.teachingLog.create({
@@ -321,7 +313,7 @@ payrollRouter.post('/teaching-logs', async (req, res) => {
 });
 
 // DELETE teaching log
-payrollRouter.delete('/teaching-logs/:id', async (req, res) => {
+payrollRouter.delete('/teaching-logs/:id', requirePayrollRole, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.teachingLog.delete({ where: { id } });
@@ -343,7 +335,7 @@ payrollRouter.get('/salary-advances', async (req, res) => {
     const where: any = {};
     if (staffId) where.staffId = staffId as string;
     if (month) {
-      where.date = { startsWith: month as string };
+      where.date = monthRange(month as string);
     }
 
     const list = await prisma.salaryAdvance.findMany({
@@ -372,11 +364,8 @@ payrollRouter.get('/salary-advances', async (req, res) => {
 });
 
 // POST create salary advance
-payrollRouter.post('/salary-advances', async (req, res) => {
+payrollRouter.post('/salary-advances', requirePayrollRole, validateBody(createSalaryAdvanceSchema), async (req, res) => {
   const data = req.body;
-  if (!data.staffId || !data.amount || !data.date) {
-    return res.status(400).json({ message: 'Thiếu thông tin tạm ứng' });
-  }
 
   try {
     const created = await prisma.salaryAdvance.create({
@@ -396,7 +385,7 @@ payrollRouter.post('/salary-advances', async (req, res) => {
 });
 
 // PUT update salary advance
-payrollRouter.put('/salary-advances/:id', async (req, res) => {
+payrollRouter.put('/salary-advances/:id', requirePayrollRole, validateBody(updateSalaryAdvanceSchema), async (req, res) => {
   const { id } = req.params;
   const data = req.body;
 
@@ -417,7 +406,7 @@ payrollRouter.put('/salary-advances/:id', async (req, res) => {
 });
 
 // DELETE salary advance
-payrollRouter.delete('/salary-advances/:id', async (req, res) => {
+payrollRouter.delete('/salary-advances/:id', requirePayrollRole, async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.salaryAdvance.delete({ where: { id } });
@@ -444,7 +433,7 @@ async function calculateStaffSalary(staffId: string, month: string, periodId: st
 
   if (staff.salaryHistory) {
     try {
-      const history = JSON.parse(staff.salaryHistory);
+      const history = toArray<any>(staff.salaryHistory);
       if (Array.isArray(history) && history.length > 0) {
         const sorted = [...history].sort((a: any, b: any) => a.effectiveMonth.localeCompare(b.effectiveMonth));
         const applicable = sorted.filter((h: any) => h.effectiveMonth <= month);
@@ -470,10 +459,10 @@ async function calculateStaffSalary(staffId: string, month: string, periodId: st
 
   // 2. Fetch teaching logs and advances
   const teachingLogs = await prisma.teachingLog.findMany({
-    where: { staffId, date: { startsWith: month } }
+    where: { staffId, date: monthRange(month) }
   });
   const advances = await prisma.salaryAdvance.findMany({
-    where: { staffId, date: { startsWith: month } }
+    where: { staffId, date: monthRange(month) }
   });
 
   const totalSessions = teachingLogs.reduce((sum, l) => sum + (l.sessions || 1), 0);
@@ -668,8 +657,8 @@ payrollRouter.get('/monthly-salaries', async (req, res) => {
       otherIncome: item.otherIncome,
       otherMonthlyAllowance: item.otherMonthlyAllowance,
       otherMonthlyAllowanceNote: item.otherMonthlyAllowanceNote,
-      otherSalary: item.otherIncome, // legacy
-      otherSalaryNote: item.notes, // legacy
+      otherSalary: item.otherIncome, // FE contract (SalaryDashboard đọc + gửi lại) — KHÔNG xóa
+      otherSalaryNote: item.notes, // FE contract (SalaryDashboard) — KHÔNG xóa
       kpiDeduction: item.kpiDeduction,
       grossSalary: item.grossSalary,
       socialInsuranceAmount: item.socialInsuranceAmount,
@@ -677,7 +666,6 @@ payrollRouter.get('/monthly-salaries', async (req, res) => {
       unemploymentInsuranceAmount: item.unemploymentInsuranceAmount,
       taxRate: item.taxRate,
       taxAmount: item.taxAmount,
-      tax: item.taxAmount, // legacy
       totalAdvance: item.totalAdvance,
       advanceApplied: item.advanceApplied,
       netSalary: item.netSalary,
@@ -702,13 +690,16 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
     // 1. Find or create payroll period
     let period = await prisma.payrollPeriod.findFirst({ where: { month } });
     if (!period) {
+      // Ngày cuối tháng thực tế (28/29/30/31) thay vì cứng "-31".
+      const [y, m] = month.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
       period = await prisma.payrollPeriod.create({
         data: {
           month,
           startDate: `${month}-01`,
-          endDate: `${month}-31`, // Simple representation
+          endDate: `${month}-${String(lastDay).padStart(2, '0')}`,
           status: 'draft',
-          createdBy: req.user?.name || req.user?.username || 'unknown'
+          createdBy: req.user?.name || req.user?.username || 'unknown', createdById: req.user?.userId || null
         }
       });
     }
@@ -717,15 +708,15 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
     const [allStaff, teachingLogs, assistantLogs, advances, existingItems] = await Promise.all([
       prisma.staffMember.findMany(),
       prisma.teachingLog.findMany({
-        where: { date: { startsWith: month } },
+        where: { date: monthRange(month) },
         select: { staffId: true }
       }),
       prisma.assistantWorkLog.findMany({
-        where: { date: { startsWith: month } },
+        where: { date: monthRange(month) },
         select: { staffId: true }
       }),
       prisma.salaryAdvance.findMany({
-        where: { date: { startsWith: month } },
+        where: { date: monthRange(month) },
         select: { staffId: true }
       }),
       prisma.payrollItem.findMany({
@@ -743,7 +734,7 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
 
     const staff = allStaff.filter(s => {
       // Exclude if start date is after calculation month (YYYY-MM-DD vs YYYY-MM)
-      const startMonth = s.startDate.slice(0, 7);
+      const startMonth = (toDateStr(s.startDate) || '').slice(0, 7);
       if (startMonth > month) {
         return false;
       }
@@ -797,7 +788,6 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
         unemploymentInsuranceAmount: savedItem.unemploymentInsuranceAmount,
         taxRate: savedItem.taxRate,
         taxAmount: savedItem.taxAmount,
-        tax: savedItem.taxAmount,
         totalAdvance: savedItem.totalAdvance,
         advanceApplied: savedItem.advanceApplied,
         netSalary: savedItem.netSalary,
@@ -807,13 +797,10 @@ payrollRouter.post('/monthly-salaries/calculate', requireAdmin, async (req, res)
     }
 
     // Add audit log
-    await prisma.auditLog.create({
-      data: {
-        action: 'CALCULATE_PAYROLL',
-        entity: 'payroll',
-        details: `Tính lương tháng ${month} cho ${results.length} nhân viên`,
-        user: req.user?.name || req.user?.username || 'unknown'
-      }
+    await writeAudit(prisma, req, {
+      action: 'CALCULATE_PAYROLL',
+      entity: 'payroll',
+      details: `Tính lương tháng ${month} cho ${results.length} nhân viên`,
     });
 
     res.json(results);

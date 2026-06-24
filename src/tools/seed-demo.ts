@@ -172,7 +172,7 @@ async function main() {
         startDate: e.startDate,
         isActive: e.isActive,
         createdBy: 'admin',
-        feeHistory: '[]'
+        feeHistory: []
       }
     });
     enrollmentMap.set(`${e.studentId}_${classId}`, createdEnrollment.id);

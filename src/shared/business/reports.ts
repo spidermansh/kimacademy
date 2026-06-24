@@ -1,6 +1,39 @@
 import { Student, Transaction, AttendanceRecord, Class, StaffMember, TeachingLog, SalaryAdvance, MonthlySalary, Expense, DailyCloseRecord, SystemParameter, AdmissionLead, Enrollment } from '../types';
 import { getFeeAtDate, computeTuitionSummary, computeRevenueSummary, computeTuitionCost } from './tuition';
 import { formatDateKey, formatDate } from '../utils';
+import { isTuitionRevenue, isInternalTransfer, isOnlineTuition, isOnlineStudy } from '../constants';
+
+// ===== Kho vật tư (Inventory) — các shape phẳng cho report engine =====
+export interface InventoryItemRow {
+  id: string; code: string; name: string; unit: string;
+  categoryId: string; categoryName: string;
+  minStockLevel: number; defaultSalePrice: number; defaultCostPrice: number;
+}
+export interface InventoryStockRow {
+  itemId: string; itemCode: string; itemName: string; unit: string;
+  categoryName: string; locationId: string; locationName: string;
+  quantityOnHand: number; averageCost: number; minStockLevel: number; salePrice: number;
+}
+export interface InventoryMovementRow {
+  id: string; movementDate: string; movementType: string;
+  itemId: string; itemCode: string; itemName: string; unit: string; categoryName: string;
+  fromLocationName: string; toLocationName: string;
+  quantity: number; unitCost: number; unitSalePrice: number; totalAmount: number;
+  studentId?: string; studentName: string; staffName: string;
+  paymentStatus: string; issued: boolean; paymentDate?: string; paymentMethod?: string;
+  createdBy: string;
+  supplierId?: string; supplierName?: string;
+}
+export interface InventoryCategoryRow { id: string; name: string }
+
+// ===== Giao việc (AssignedTask) — shape phẳng cho report engine =====
+export interface AssignedTaskRow {
+  id: string; title: string; content?: string;
+  dueDate?: string; priority: string; status: string;
+  assigneeUserId: string; assigneeName: string;
+  assignedByName?: string; completionNote?: string;
+  completedAt?: string; createdAt?: string;
+}
 
 export interface ReportParams {
   students: Student[];
@@ -17,6 +50,11 @@ export interface ReportParams {
   systemParameters?: SystemParameter[];
   admissionLeads?: AdmissionLead[];
   enrollments?: Enrollment[];
+  inventoryItems?: InventoryItemRow[];
+  inventoryStocks?: InventoryStockRow[];
+  inventoryMovements?: InventoryMovementRow[];
+  inventoryCategories?: InventoryCategoryRow[];
+  assignedTasks?: AssignedTaskRow[];
   filters: {
     month?: string;
     startDate?: string;
@@ -32,6 +70,9 @@ export interface ReportParams {
     reconciliationStatus?: string;
     searchQuery?: string;
     threshold?: number;
+    itemId?: string;
+    categoryId?: string;
+    locationId?: string;
   };
 }
 
@@ -40,13 +81,25 @@ const getStudentClassesStr = (student: Student, enrollList: Enrollment[]) => {
   return activeList.length > 0 ? activeList.join(', ') : (student.className || 'Chưa xếp lớp');
 };
 
+// Đơn giá ghi nhận doanh thu thực cho 1 buổi điểm danh: ưu tiên enrollment khớp lớp+ngày,
+// fallback enrollment cùng lớp, cuối cùng feeHistory hồ sơ học viên. (Dùng cho các báo cáo earned.)
+const earnedRateForAttendance = (a: AttendanceRecord, student: Student | undefined, enrollList: Enrollment[]): number => {
+  if (!student) return 0;
+  const studEnr = enrollList.filter(e => e.studentId === student.id);
+  const match = studEnr.find(e => e.className === a.className && a.date >= e.startDate && (!e.endDate || a.date <= e.endDate));
+  if (match) return match.feePerSession;
+  const classMatch = studEnr.find(e => e.className === a.className);
+  if (classMatch) return classMatch.feePerSession;
+  return getFeeAtDate(a.date, Number(student.feePerSession) || 0, student.feeHistory || []);
+};
+
 export interface ReportDefinition {
   id: string;
   name: string;
   description: string;
   type: 'summary' | 'detail' | 'object';
-  filters: ('month' | 'dateRange' | 'class' | 'student' | 'teacher' | 'paymentMethod' | 'revenueCategory' | 'expenseCategory' | 'staff' | 'classStatus' | 'reconciliationStatus' | 'search')[];
-  columns: { key: string; label: string; align?: 'left' | 'right' | 'center'; format?: 'currency' | 'date' | 'number' | 'text' }[];
+  filters: ('month' | 'dateRange' | 'class' | 'student' | 'teacher' | 'paymentMethod' | 'revenueCategory' | 'expenseCategory' | 'staff' | 'classStatus' | 'reconciliationStatus' | 'search' | 'invItem' | 'invCategory' | 'invLocation')[];
+  columns: { key: string; label: string; align?: 'left' | 'right' | 'center'; format?: 'currency' | 'date' | 'number' | 'text'; noTotal?: boolean }[];
   compute: (params: ReportParams) => any[];
   implemented: boolean;
 }
@@ -97,53 +150,64 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         }
       },
       {
-        id: 'center_finance_summary',
+        id: 'cash_flow_monthly',
         implemented: true,
-        name: 'Báo cáo tổng hợp tài chính tháng',
-        description: 'Tổng hợp thu chi thực tế, chi phí lương và lợi nhuận thực tế trong tháng.',
+        name: 'Báo cáo dòng tiền tháng (Cash)',
+        description: 'Tiền thực thu, thực chi và lợi nhuận theo DÒNG TIỀN trong tháng (lương tính theo thực nhận/net).',
         type: 'summary',
         filters: ['month'],
         columns: [
-          { key: 'metric', label: 'Chỉ tiêu tài chính', align: 'left', format: 'text' },
-          { key: 'amount', label: 'Số tiền', align: 'right', format: 'currency' },
+          { key: 'metric', label: 'Chỉ tiêu dòng tiền', align: 'left', format: 'text' },
+          { key: 'amount', label: 'Số tiền', align: 'right', format: 'currency', noTotal: true },
+          { key: 'desc', label: 'Mô tả ý nghĩa', align: 'left', format: 'text' }
+        ],
+        compute: ({ transactions, expenses, salaries, filters }) => {
+          const m = filters.month || new Date().toISOString().slice(0, 7);
+          const totalIncome = transactions
+            .filter(t => t.paymentDate?.startsWith(m) && !isOnlineTuition(t.revenueCategory) && !isOnlineStudy(t.studyType) && !isInternalTransfer(t.paymentMethod))
+            .reduce((sum, t) => sum + t.amount, 0);
+          const opExpense = expenses.filter(e => e.date?.startsWith(m)).reduce((sum, e) => sum + e.amount, 0);
+          const payrollNet = salaries.filter(s => s.month === m).reduce((sum, s) => sum + (s.netSalary || 0), 0);
+          const totalExpense = opExpense + payrollNet;
+          return [
+            { metric: '1. Tổng tiền thực thu (Cash)', amount: totalIncome, desc: 'Dòng tiền mặt & chuyển khoản thu trong tháng (đã loại học phí online & chuyển số dư).' },
+            { metric: '2. Chi phí vận hành trung tâm', amount: opExpense, desc: 'Mặt bằng, điện nước, marketing...' },
+            { metric: '3. Lương thực nhận (net)', amount: payrollNet, desc: 'Lương thực trả cho GV & văn phòng (sau thuế & tạm ứng).' },
+            { metric: '4. Tổng tiền chi thực tế (2 + 3)', amount: totalExpense, desc: 'Tổng dòng tiền thực chi trong tháng.' },
+            { metric: '5. Lợi nhuận theo dòng tiền (1 - 4)', amount: totalIncome - totalExpense, desc: 'Chênh lệch thu chi tiền mặt thực tế trong tháng.' }
+          ];
+        }
+      },
+      {
+        id: 'earned_revenue_monthly',
+        implemented: true,
+        name: 'Báo cáo doanh thu thực tháng (Earned)',
+        description: 'Doanh thu thực theo buổi đã học thực tế và lợi nhuận thực (lương tính theo GROSS/chi phí phát sinh).',
+        type: 'summary',
+        filters: ['month'],
+        columns: [
+          { key: 'metric', label: 'Chỉ tiêu doanh thu thực', align: 'left', format: 'text' },
+          { key: 'amount', label: 'Số tiền', align: 'right', format: 'currency', noTotal: true },
           { key: 'desc', label: 'Mô tả ý nghĩa', align: 'left', format: 'text' }
         ],
         compute: ({ students, transactions, expenses, salaries, attendance, classes, enrollments = [], filters }) => {
           const m = filters.month || new Date().toISOString().slice(0, 7);
-          
-          // Doanh thu dòng tiền (Cash Collected)
-          const totalIncome = transactions
-            .filter(t => t.paymentDate?.startsWith(m) && t.revenueCategory !== 'Học phí online' && t.studyType !== 'Online' && t.paymentMethod !== 'Chuyển số dư')
-            .reduce((sum, t) => sum + t.amount, 0);
-
-          // Chi phí vận hành
-          const opExpense = expenses
-            .filter(e => e.date?.startsWith(m))
-            .reduce((sum, e) => sum + e.amount, 0);
-
-          // Chi phí nhân sự lương
-          const payroll = salaries
-            .filter(s => s.month === m)
-            .reduce((sum, s) => sum + (s.netSalary || 0), 0);
-
-          const totalExpense = opExpense + payroll;
-
-          // Doanh thu thực
           const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes, enrollments);
           const earnedTuition = revSummary.tuitionEarnedInPeriod;
           const otherRevenue = revSummary.otherRevenueCollectedInPeriod;
           const totalEarned = revSummary.totalEarnedRevenueInPeriod;
-
+          const opExpense = expenses.filter(e => e.date?.startsWith(m)).reduce((sum, e) => sum + e.amount, 0);
+          // Lương GROSS = chi phí lương phát sinh (accrual) — chốt với chủ dự án; khớp P&L nhóm Thu chi.
+          const payrollGross = salaries.filter(s => s.month === m).reduce((sum, s) => sum + (s.grossSalary || 0), 0);
+          const totalCost = opExpense + payrollGross;
           return [
-            { metric: '1. Tổng tiền thực thu (Cash)', amount: totalIncome, desc: 'Dòng tiền mặt & chuyển khoản thu trong tháng.' },
-            { metric: '2. Chi phí vận hành trung tâm', amount: opExpense, desc: 'Mặt bằng, điện nước, marketing...' },
-            { metric: '3. Lương còn thanh toán / Thực nhận', amount: payroll, desc: 'Tổng lương thực nhận của giáo viên & văn phòng trong tháng (sau thuế & tạm ứng).' },
-            { metric: '4. Tổng tiền chi thực tế (2 + 3)', amount: totalExpense, desc: 'Tổng dòng tiền thực chi trong tháng. Dòng tiền lương đầy đủ, bao gồm tạm ứng và các khoản nộp thay, sẽ được chuẩn hóa ở PAY-05.' },
-            { metric: '5. Doanh thu thực học phí (Earned Tuition)', amount: earnedTuition, desc: 'Số tiền tương ứng số buổi học sinh đã học thực tế.' },
-            { metric: '6. Doanh thu thực khác', amount: otherRevenue, desc: 'Thu sách, đồng phục, lệ phí thi...' },
-            { metric: '7. Tổng doanh thu thực tháng (5 + 6)', amount: totalEarned, desc: 'Tổng giá trị dịch vụ/hàng hóa đã cung cấp hoàn tất.' },
-            { metric: '8. Lợi nhuận thực (Earned Profit) (7 - 4)', amount: totalEarned - totalExpense, desc: 'Doanh thu thực tế trừ chi phí thực tế.' },
-            { metric: '9. Lợi nhuận theo dòng tiền (1 - 4)', amount: totalIncome - totalExpense, desc: 'Chênh lệch thu chi thực tế trong tháng.' }
+            { metric: '1. Doanh thu thực học phí (Earned Tuition)', amount: earnedTuition, desc: 'Số tiền tương ứng số buổi học viên đã học thực tế (có mặt/vắng không phép).' },
+            { metric: '2. Doanh thu thực khác', amount: otherRevenue, desc: 'Thu sách, đồng phục, lệ phí thi... ghi nhận khi thu.' },
+            { metric: '3. Tổng doanh thu thực (1 + 2)', amount: totalEarned, desc: 'Tổng giá trị dịch vụ/hàng hóa đã cung cấp.' },
+            { metric: '4. Chi phí vận hành', amount: opExpense, desc: 'Mặt bằng, điện nước, marketing...' },
+            { metric: '5. Chi phí lương (gross/accrual)', amount: payrollGross, desc: 'Tổng chi phí lương phát sinh (trước thuế & tạm ứng).' },
+            { metric: '6. Tổng chi phí thực (4 + 5)', amount: totalCost, desc: 'Tổng chi phí phát sinh trong kỳ.' },
+            { metric: '7. Lợi nhuận thực (3 - 6)', amount: totalEarned - totalCost, desc: 'Doanh thu thực trừ chi phí phát sinh (accrual).' }
           ];
         }
       },
@@ -217,8 +281,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               const classCollected = transactions
                 .filter(t =>
                   t.studentId === s.id &&
-                  t.revenueCategory === 'Học phí offline' &&
-                  t.studyType !== 'Online' &&
+                  isTuitionRevenue(t.revenueCategory) &&
+                  !isOnlineStudy(t.studyType) &&
                   (t.className === clsName || (clsName === primaryClass && (!t.className || !activeClassesOfStudent.includes(t.className))))
                 )
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -367,10 +431,10 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         }
       },
       {
-        id: 'student_near_end_detail',
+        id: 'student_sessions_low_detail',
         implemented: true,
-        name: 'Báo cáo học viên sắp hết buổi',
-        description: 'Học viên chỉ còn từ 1 đến 2 buổi học.',
+        name: 'Báo cáo học viên cần nhắc đóng phí (sắp/đã hết buổi)',
+        description: 'Học viên đang học còn từ 0 đến N buổi (gộp "sắp hết" + "hết buổi"). Ngưỡng N theo tham số hệ thống hoặc bộ lọc.',
         type: 'detail',
         filters: ['class', 'search'],
         columns: [
@@ -378,7 +442,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
           { key: 'bought', label: 'Buổi đã mua', align: 'right', format: 'number' },
           { key: 'used', label: 'Buổi đã dùng', align: 'right', format: 'number' },
-          { key: 'remaining', label: 'Buổi còn lại', align: 'right', format: 'number' }
+          { key: 'remaining', label: 'Buổi còn lại', align: 'right', format: 'number' },
+          { key: 'status', label: 'Tình trạng', align: 'center', format: 'text' }
         ],
         compute: ({ students, transactions, attendance, enrollments = [], filters, systemParameters }) => {
           const lowSessionsParam = systemParameters?.find(p => p.key === 'lowRemainingSessionsThreshold' && p.isActive);
@@ -403,51 +468,12 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
                 className: getStudentClassesStr(s, enrollments),
                 bought: summary.totalSessionsBought,
                 used: summary.totalSessionsUsed,
-                remaining: summary.sessionsRemaining
+                remaining: summary.sessionsRemaining,
+                status: summary.sessionsRemaining === 0 ? 'Hết buổi' : 'Sắp hết'
               };
             })
-            .filter(row => row.remaining > 0 && row.remaining <= lowSessionsVal);
-        }
-      },
-      {
-        id: 'student_end_detail',
-        implemented: true,
-        name: 'Báo cáo học viên hết buổi',
-        description: 'Học viên đã học hết 100% số buổi đã đóng tiền (buổi còn lại <= 0).',
-        type: 'detail',
-        filters: ['class', 'search'],
-        columns: [
-          { key: 'name', label: 'Học viên', align: 'left', format: 'text' },
-          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
-          { key: 'bought', label: 'Buổi đã mua', align: 'right', format: 'number' },
-          { key: 'used', label: 'Buổi đã học', align: 'right', format: 'number' },
-          { key: 'remaining', label: 'Buổi còn lại', align: 'right', format: 'number' }
-        ],
-        compute: ({ students, transactions, attendance, enrollments = [], filters }) => {
-          return students
-            .filter(s => {
-              if (s.status !== 'active') return false;
-              if (filters.classId) {
-                const isEnrolled = enrollments.some(e => e.studentId === s.id && e.className === filters.classId && e.isActive);
-                if (!isEnrolled) return false;
-              }
-              if (filters.searchQuery) {
-                const q = filters.searchQuery.toLowerCase();
-                return s.name.toLowerCase().includes(q);
-              }
-              return true;
-            })
-            .map(s => {
-              const summary = computeTuitionSummary(s, transactions, attendance, enrollments);
-              return {
-                name: s.name,
-                className: getStudentClassesStr(s, enrollments),
-                bought: summary.totalSessionsBought,
-                used: summary.totalSessionsUsed,
-                remaining: summary.sessionsRemaining
-              };
-            })
-            .filter(row => row.remaining === 0);
+            .filter(row => row.remaining >= 0 && row.remaining <= lowSessionsVal)
+            .sort((a, b) => a.remaining - b.remaining);
         }
       },
       {
@@ -495,7 +521,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         id: 'student_absent_frequent',
         implemented: true,
         name: 'Báo cáo học viên vắng nhiều',
-        description: 'Học viên vắng từ 2 buổi học liên tục gần nhất trở lên.',
+        description: 'Học viên vắng KHÔNG phép từ 2 buổi liên tục gần nhất trở lên (vắng có phép không tính).',
         type: 'object',
         filters: ['class', 'search'],
         columns: [
@@ -525,11 +551,12 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
 
               if (records.length < 2) return null;
               
+              // Chỉ tính vắng KHÔNG phép (absent) liên tục; gặp present hoặc excused (đã xin phép) thì dừng.
               let consec = 0;
               for (const r of records) {
-                if (r.status === 'absent' || r.status === 'excused') {
+                if (r.status === 'absent') {
                   consec++;
-                } else if (r.status === 'present') {
+                } else {
                   break;
                 }
               }
@@ -605,8 +632,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
       {
         id: 'student_waiting_class_detail',
         implemented: true,
-        name: 'Báo cáo danh sách học viên chờ xếp lớp',
-        description: 'Danh sách các học viên đã tạo hồ sơ chính thức nhưng chưa được phân vào lớp học cụ thể.',
+        name: 'Báo cáo học viên chưa xếp lớp (hồ sơ chính thức)',
+        description: 'Học viên đã có hồ sơ chính thức nhưng chưa có lớp đang học. (Khác "Lead trúng tuyển chờ xếp lớp" ở nhóm Tuyển sinh — dựa trên lead.)',
         type: 'detail',
         filters: ['search'],
         columns: [
@@ -619,14 +646,15 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ students, enrollments = [], filters }) => {
           return students
             .filter(s => {
-              // 1. Ưu tiên admissionStatus === 'waiting_class'
-              // 2. Xét không có enrollment active hoặc className rỗng
+              // Loại HV đã nghỉ/tạm nghỉ — không còn "chờ xếp lớp".
+              if (s.status === 'left' || s.status === 'suspended') return false;
+              // "Chờ xếp lớp" = chưa có enrollment đang hoạt động, hoặc được đánh dấu chờ lớp.
+              // (KHÔNG dựa vào s.className rỗng — trường này có thể cũ/trống dù HV đã có lớp.)
               const hasActiveEnroll = enrollments.some(e => e.studentId === s.id && e.isActive);
-              const isWaiting = s.admissionStatus === 'waiting_class' || 
-                                !hasActiveEnroll ||
-                                !s.className || 
-                                s.className.trim() === '' || 
-                                s.className === 'Chưa xếp lớp';
+              const isWaiting =
+                s.status === 'waiting_class' ||
+                s.admissionStatus === 'waiting_class' ||
+                !hasActiveEnroll;
               if (!isWaiting) return false;
               if (filters.searchQuery) {
                 const q = filters.searchQuery.toLowerCase();
@@ -639,6 +667,84 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               name: s.name,
               parentPhone: s.parentPhone || '—',
               enrollDate: s.enrollDate || '—',
+              notes: s.notes || '—'
+            }));
+        }
+      },
+      {
+        id: 'student_birthday_detail',
+        implemented: true,
+        name: 'Báo cáo sinh nhật học viên',
+        description: 'Học viên đang học/học thử có sinh nhật trong tháng được chọn (phục vụ CSKH).',
+        type: 'detail',
+        filters: ['month', 'search'],
+        columns: [
+          { key: 'name', label: 'Học viên', align: 'left', format: 'text' },
+          { key: 'birthDate', label: 'Ngày sinh', align: 'center', format: 'date' },
+          { key: 'age', label: 'Tuổi', align: 'right', format: 'number', noTotal: true },
+          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
+          { key: 'phone', label: 'SĐT Phụ huynh', align: 'center', format: 'text' }
+        ],
+        compute: ({ students, enrollments = [], filters }) => {
+          const m = filters.month || new Date().toISOString().slice(0, 7);
+          const mm = m.slice(5, 7);
+          const nowY = new Date().getFullYear();
+          return students
+            .filter(s => {
+              if (s.status === 'left' || s.status === 'suspended') return false;
+              if (!s.birthDate || s.birthDate.length < 10) return false;
+              if (s.birthDate.slice(5, 7) !== mm) return false;
+              if (filters.searchQuery) {
+                const q = filters.searchQuery.toLowerCase();
+                return s.name.toLowerCase().includes(q) || (s.parentPhone || '').includes(q);
+              }
+              return true;
+            })
+            .map(s => ({
+              name: s.name,
+              birthDate: s.birthDate,
+              age: nowY - Number(s.birthDate!.slice(0, 4)),
+              className: getStudentClassesStr(s, enrollments),
+              phone: s.parentPhone || '—'
+            }))
+            .sort((a, b) => (a.birthDate || '').slice(8, 10).localeCompare((b.birthDate || '').slice(8, 10)));
+        }
+      },
+      {
+        id: 'student_trial_detail',
+        implemented: true,
+        name: 'Báo cáo học viên học thử (trial)',
+        description: 'Danh sách học viên đang ở trạng thái học thử (trial) — không nằm trong các báo cáo "đang học".',
+        type: 'detail',
+        filters: ['class', 'search'],
+        columns: [
+          { key: 'id', label: 'Mã học viên', align: 'left', format: 'text' },
+          { key: 'name', label: 'Học viên', align: 'left', format: 'text' },
+          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
+          { key: 'enrollDate', label: 'Ngày đăng ký', align: 'center', format: 'date' },
+          { key: 'phone', label: 'SĐT Phụ huynh', align: 'center', format: 'text' },
+          { key: 'notes', label: 'Ghi chú', align: 'left', format: 'text' }
+        ],
+        compute: ({ students, enrollments = [], filters }) => {
+          return students
+            .filter(s => {
+              if (s.status !== 'trial') return false;
+              if (filters.classId) {
+                const isEnrolled = enrollments.some(e => e.studentId === s.id && e.className === filters.classId && e.isActive);
+                if (!isEnrolled) return false;
+              }
+              if (filters.searchQuery) {
+                const q = filters.searchQuery.toLowerCase();
+                return s.name.toLowerCase().includes(q) || (s.parentPhone || '').includes(q);
+              }
+              return true;
+            })
+            .map(s => ({
+              id: s.id,
+              name: s.name,
+              className: getStudentClassesStr(s, enrollments),
+              enrollDate: s.enrollDate || '—',
+              phone: s.parentPhone || '—',
               notes: s.notes || '—'
             }));
         }
@@ -786,7 +892,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
           { key: 'total', label: 'Số buổi điểm danh', align: 'right', format: 'number' },
           { key: 'present', label: 'Số buổi đi học', align: 'right', format: 'number' },
-          { key: 'rateValue', label: 'Tỷ lệ chuyên cần', align: 'right', format: 'number' }
+          { key: 'rateValue', label: 'Tỷ lệ chuyên cần', align: 'right', format: 'number', noTotal: true }
         ],
         compute: ({ students, attendance, enrollments = [], filters }) => {
           return students
@@ -864,8 +970,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'status', label: 'Trạng thái / Nội dung', align: 'left', format: 'text' },
           { key: 'sessionsAdded', label: 'Số buổi đóng', align: 'right', format: 'number' },
           { key: 'sessionsDeducted', label: 'Số buổi trừ', align: 'right', format: 'number' },
-          { key: 'runningPaid', label: 'Buổi đã đóng (lũy kế)', align: 'right', format: 'number' },
-          { key: 'runningRemaining', label: 'Buổi còn lại', align: 'right', format: 'number' },
+          { key: 'runningPaid', label: 'Buổi đã đóng (lũy kế)', align: 'right', format: 'number', noTotal: true },
+          { key: 'runningRemaining', label: 'Buổi còn lại', align: 'right', format: 'number', noTotal: true },
           { key: 'note', label: 'Ghi chú', align: 'left', format: 'text' }
         ],
         compute: ({ students, transactions, attendance, filters }) => {
@@ -880,8 +986,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           // 1. Get transactions (Học phí offline)
           const studTxs = transactions.filter(t => 
             t.studentId === targetStud && 
-            t.revenueCategory === 'Học phí offline' && 
-            t.studyType !== 'Online'
+            isTuitionRevenue(t.revenueCategory) && 
+            !isOnlineStudy(t.studyType)
           );
 
           // 2. Get attendance records
@@ -1129,8 +1235,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ transactions, filters }) => {
           return transactions
             .filter(t => {
-              if (t.revenueCategory !== 'Học phí offline' || t.studyType === 'Online') return false;
-              if (t.paymentMethod === 'Chuyển số dư') return false; // Loại bỏ các khoản chuyển đổi số dư nội bộ
+              if (!isTuitionRevenue(t.revenueCategory) || isOnlineStudy(t.studyType)) return false;
+              if (isInternalTransfer(t.paymentMethod)) return false; // Loại bỏ các khoản chuyển đổi số dư nội bộ
               if (filters.startDate && t.paymentDate < filters.startDate) return false;
               if (filters.endDate && t.paymentDate > filters.endDate) return false;
               if (filters.paymentMethod && t.paymentMethod !== filters.paymentMethod) return false;
@@ -1248,7 +1354,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           const targetStud = filters.studentId;
           if (!targetStud) return [];
           return transactions
-            .filter(t => t.studentId === targetStud && t.revenueCategory === 'Học phí offline')
+            .filter(t => t.studentId === targetStud && isTuitionRevenue(t.revenueCategory) && !isInternalTransfer(t.paymentMethod))
             .map(t => ({
               date: t.paymentDate,
               term: t.term || '—',
@@ -1335,8 +1441,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
               const classCollected = transactions
                 .filter(t =>
                   t.studentId === s.id &&
-                  t.revenueCategory === 'Học phí offline' &&
-                  t.studyType !== 'Online' &&
+                  isTuitionRevenue(t.revenueCategory) &&
+                  !isOnlineStudy(t.studyType) &&
                   (t.className === clsName || (clsName === primaryClass && (!t.className || !activeClassesOfStudent.includes(t.className))))
                 )
                 .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -1414,15 +1520,17 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'amount', label: 'Số tiền', align: 'right', format: 'currency' },
           { key: 'ratio', label: 'Tỷ lệ %', align: 'right', format: 'text' }
         ],
-        compute: ({ students, transactions, expenses, salaries, attendance, classes, filters }) => {
+        compute: ({ students, transactions, expenses, salaries, attendance, classes, enrollments = [], filters }) => {
           const m = filters.month || new Date().toISOString().slice(0, 7);
 
-          const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes);
+          const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes, enrollments);
           const earnedTuition = revSummary.tuitionEarnedInPeriod;
           const otherRevenue = revSummary.otherRevenueCollectedInPeriod;
           const totalRevenue = revSummary.totalEarnedRevenueInPeriod;
 
           const opExpense = expenses.filter(e => e.date?.startsWith(m)).reduce((sum, e) => sum + e.amount, 0);
+          // P&L (accrual) dùng lương GROSS = chi phí phát sinh. Khác "Tài chính tháng" (Tổng quan) dùng
+          // netSalary = dòng tiền thực chi → hai báo cáo có thể lệch ở phần lương, đúng bản chất cash vs accrual.
           const payroll = salaries.filter(s => s.month === m).reduce((sum, s) => sum + (s.grossSalary || 0), 0);
           const totalCost = opExpense + payroll;
 
@@ -1435,7 +1543,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             { item: '  2. Doanh thu thực khác (Sách/Đồng phục...)', amount: otherRevenue, ratio: getRatio(otherRevenue) },
             { item: 'B. TỔNG CHI PHÍ THỰC TẾ (3 + 4)', amount: totalCost, ratio: getRatio(totalCost) },
             { item: '  3. Chi phí vận hành trung tâm', amount: opExpense, ratio: getRatio(opExpense) },
-            { item: '  4. Chi phí lương phát sinh / payrollCost', amount: payroll, ratio: getRatio(payroll) },
+            { item: '  4. Chi phí lương (gross/accrual) / payrollCost', amount: payroll, ratio: getRatio(payroll) },
             { item: 'C. LỢI NHUẬN THỰC TẾ (A - B)', amount: profit, ratio: getRatio(profit) }
           ];
         }
@@ -1459,8 +1567,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ transactions, filters }) => {
           return transactions
             .filter(t => {
-              if (t.studyType === 'Online' || t.revenueCategory === 'Học phí online') return false; // offline-only
-              if (t.paymentMethod === 'Chuyển số dư') return false; // Loại bỏ các khoản chuyển đổi số dư nội bộ
+              if (isOnlineStudy(t.studyType) || isOnlineTuition(t.revenueCategory)) return false; // offline-only
+              if (isInternalTransfer(t.paymentMethod)) return false; // Loại bỏ các khoản chuyển đổi số dư nội bộ
               if (filters.startDate && t.paymentDate < filters.startDate) return false;
               if (filters.endDate && t.paymentDate > filters.endDate) return false;
               if (filters.paymentMethod && t.paymentMethod !== filters.paymentMethod) return false;
@@ -1544,6 +1652,77 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         }
       },
       {
+        id: 'earned_tuition_by_class',
+        implemented: true,
+        name: 'Doanh thu thực học phí theo lớp (kỳ)',
+        description: 'Doanh thu thực học phí ghi nhận từ buổi đã học (có mặt/vắng KP), gom theo lớp trong khoảng ngày.',
+        type: 'object',
+        filters: ['dateRange', 'class'],
+        columns: [
+          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
+          { key: 'sessions', label: 'Lượt buổi tính phí', align: 'right', format: 'number' },
+          { key: 'earned', label: 'Doanh thu thực', align: 'right', format: 'currency' }
+        ],
+        compute: ({ attendance, students, enrollments = [], filters }) => {
+          const start = filters.startDate;
+          const end = filters.endDate;
+          const studentMap = new Map<string, Student>();
+          students.forEach(s => studentMap.set(s.id, s));
+          const byClass: Record<string, any> = {};
+          attendance
+            .filter(a => {
+              if (a.status !== 'present' && a.status !== 'absent') return false;
+              if (start && a.date < start) return false;
+              if (end && a.date > end) return false;
+              if (filters.classId && a.classId !== filters.classId && a.className !== filters.classId) return false;
+              return true;
+            })
+            .forEach(a => {
+              const cls = a.className || '—';
+              const rate = earnedRateForAttendance(a, studentMap.get(a.studentId), enrollments);
+              byClass[cls] = byClass[cls] || { className: cls, sessions: 0, earned: 0 };
+              byClass[cls].sessions += 1;
+              byClass[cls].earned += rate;
+            });
+          return Object.values(byClass).sort((a: any, b: any) => b.earned - a.earned);
+        }
+      },
+      {
+        id: 'earned_revenue_by_day',
+        implemented: true,
+        name: 'Doanh thu thực học phí theo ngày (tổng hợp)',
+        description: 'Tổng doanh thu thực học phí mỗi ngày (theo buổi đã học), trong khoảng ngày chọn.',
+        type: 'object',
+        filters: ['dateRange', 'class'],
+        columns: [
+          { key: 'date', label: 'Ngày', align: 'center', format: 'date' },
+          { key: 'sessions', label: 'Lượt buổi tính phí', align: 'right', format: 'number' },
+          { key: 'earned', label: 'Doanh thu thực', align: 'right', format: 'currency' }
+        ],
+        compute: ({ attendance, students, enrollments = [], filters }) => {
+          const start = filters.startDate;
+          const end = filters.endDate;
+          const studentMap = new Map<string, Student>();
+          students.forEach(s => studentMap.set(s.id, s));
+          const byDay: Record<string, any> = {};
+          attendance
+            .filter(a => {
+              if (a.status !== 'present' && a.status !== 'absent') return false;
+              if (start && a.date < start) return false;
+              if (end && a.date > end) return false;
+              if (filters.classId && a.classId !== filters.classId && a.className !== filters.classId) return false;
+              return true;
+            })
+            .forEach(a => {
+              const rate = earnedRateForAttendance(a, studentMap.get(a.studentId), enrollments);
+              byDay[a.date] = byDay[a.date] || { date: a.date, sessions: 0, earned: 0 };
+              byDay[a.date].sessions += 1;
+              byDay[a.date].earned += rate;
+            });
+          return Object.values(byDay).sort((a: any, b: any) => b.date.localeCompare(a.date));
+        }
+      },
+      {
         id: 'other_income_detail',
         implemented: true,
         name: 'Báo cáo doanh thu khác',
@@ -1561,7 +1740,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ transactions, filters }) => {
           return transactions
             .filter(t => {
-              if (t.revenueCategory === 'Học phí offline' || t.revenueCategory === 'Học phí online' || t.studyType === 'Online') return false;
+              if (isTuitionRevenue(t.revenueCategory) || isOnlineTuition(t.revenueCategory) || isOnlineStudy(t.studyType)) return false;
               if (filters.startDate && t.paymentDate < filters.startDate) return false;
               if (filters.endDate && t.paymentDate > filters.endDate) return false;
               if (filters.revenueCategory && t.revenueCategory !== filters.revenueCategory) return false;
@@ -1636,7 +1815,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'profit', label: 'Lợi nhuận thực', align: 'right', format: 'currency' },
           { key: 'margin', label: 'Tỷ suất (%)', align: 'right', format: 'text' }
         ],
-        compute: ({ students, transactions, expenses, salaries, attendance, classes }) => {
+        compute: ({ students, transactions, expenses, salaries, attendance, classes, enrollments = [] }) => {
           const months: string[] = [];
           const now = new Date();
           for (let i = 5; i >= 0; i--) {
@@ -1645,7 +1824,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           }
 
           return months.map(m => {
-            const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes);
+            const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes, enrollments);
             const earnedTuition = revSummary.tuitionEarnedInPeriod;
             const otherRevenue = revSummary.otherRevenueCollectedInPeriod;
             const totalRev = revSummary.totalEarnedRevenueInPeriod;
@@ -1684,7 +1863,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           { key: 'cashProfit', label: 'Lợi nhuận dòng tiền', align: 'right', format: 'currency' },
           { key: 'margin', label: 'Tỷ suất dòng tiền', align: 'right', format: 'text' }
         ],
-        compute: ({ students, transactions, expenses, salaries, attendance, classes }) => {
+        compute: ({ students, transactions, expenses, salaries, attendance, classes, enrollments = [] }) => {
           const months: string[] = [];
           const now = new Date();
           for (let i = 5; i >= 0; i--) {
@@ -1693,7 +1872,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
           }
 
           return months.map(m => {
-            const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes);
+            const revSummary = computeRevenueSummary(students, transactions, attendance, m, classes, enrollments);
             const tuitionCollected = revSummary.tuitionCollectedInPeriod;
             const otherRevenue = revSummary.otherRevenueCollectedInPeriod;
             const totalCollected = revSummary.totalCashCollectedInPeriod;
@@ -2019,7 +2198,7 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             });
 
             const dayAtt = attendance.filter(a => a.date === dateStr);
-            const dayTxs = transactions.filter(t => t.paymentDate === dateStr && t.revenueCategory !== 'Học phí online' && t.studyType !== 'Online');
+            const dayTxs = transactions.filter(t => t.paymentDate === dateStr && !isOnlineTuition(t.revenueCategory) && !isOnlineStudy(t.studyType));
             const dayExps = expenses.filter(e => e.date === dateStr);
 
             if (scheduledClasses.length > 0 || dayAtt.length > 0 || dayTxs.length > 0 || dayExps.length > 0) {
@@ -2092,14 +2271,14 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
         compute: ({ transactions, students }) => {
           const list: any[] = [];
           transactions.forEach(t => {
-            if (t.studyType === 'Online' || t.revenueCategory === 'Học phí online') return;
+            if (isOnlineStudy(t.studyType) || isOnlineTuition(t.revenueCategory)) return;
 
             const errs: string[] = [];
             if (t.amount <= 0) errs.push('Số tiền <= 0đ');
             if (!t.paymentDate) errs.push('Thiếu ngày đóng');
             if (!t.paymentMethod?.trim()) errs.push('Thiếu hình thức thanh toán');
             
-            if (t.revenueCategory === 'Học phí offline') {
+            if (isTuitionRevenue(t.revenueCategory)) {
               const hasValidStudent = t.studentId && students.some(s => s.id === t.studentId);
               if (!hasValidStudent) {
                 errs.push('Thiếu studentId hợp lệ khớp với hồ sơ học viên');
@@ -2214,8 +2393,8 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
       {
         id: 'admission_waiting_class_detail',
         implemented: true,
-        name: 'Báo cáo danh sách chờ xếp lớp',
-        description: 'Chi tiết các học viên tiềm năng đã trúng tuyển hoặc đã chuyển đổi nhưng chưa được xếp lớp học.',
+        name: 'Báo cáo lead trúng tuyển chờ xếp lớp',
+        description: 'Lead tuyển sinh đã trúng tuyển/đã chuyển đổi nhưng chưa xếp lớp. (Dựa trên dữ liệu tuyển sinh — khác "Học viên chưa xếp lớp" ở nhóm Học viên.)',
         type: 'detail',
         filters: ['search'],
         columns: [
@@ -2252,6 +2431,599 @@ export const REPORT_GROUPS: { id: string; label: string; icon: string; reports: 
             }));
         }
       }
+    ]
+  },
+  {
+    id: 'grp_inventory',
+    label: 'Báo cáo kho vật tư',
+    icon: '📦',
+    reports: [
+      // #2 — Giá trị tồn kho hiện tại
+      {
+        id: 'inv_stock_valuation',
+        implemented: true,
+        name: 'Giá trị tồn kho hiện tại',
+        description: 'Số lượng tồn, giá vốn bình quân và giá trị tồn theo từng mặt hàng / kho.',
+        type: 'summary',
+        filters: ['invCategory', 'invLocation'],
+        columns: [
+          { key: 'itemCode', label: 'Mã SKU', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'categoryName', label: 'Nhóm', align: 'left', format: 'text' },
+          { key: 'locationName', label: 'Kho', align: 'left', format: 'text' },
+          { key: 'quantityOnHand', label: 'SL tồn', align: 'right', format: 'number' },
+          { key: 'averageCost', label: 'Giá vốn BQ', align: 'right', format: 'currency' },
+          { key: 'value', label: 'Giá trị tồn', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryStocks = [], inventoryCategories = [], filters }) => {
+          const catName = filters.categoryId ? inventoryCategories.find(c => c.id === filters.categoryId)?.name : null;
+          return inventoryStocks
+            .filter(s => (!catName || s.categoryName === catName) && (!filters.locationId || s.locationId === filters.locationId))
+            .map(s => ({
+              itemCode: s.itemCode, itemName: s.itemName, categoryName: s.categoryName, locationName: s.locationName,
+              quantityOnHand: s.quantityOnHand, averageCost: s.averageCost, value: s.quantityOnHand * s.averageCost,
+            }))
+            .sort((a, b) => b.value - a.value);
+        },
+      },
+      // #1 — Nhập – Xuất – Tồn theo kỳ
+      {
+        id: 'inv_in_out_balance',
+        implemented: true,
+        name: 'Nhập – Xuất – Tồn theo kỳ',
+        description: 'Tồn đầu kỳ, tổng nhập, tổng xuất và tồn cuối kỳ theo từng mặt hàng.',
+        type: 'summary',
+        filters: ['dateRange', 'invCategory'],
+        columns: [
+          { key: 'itemCode', label: 'Mã SKU', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'unit', label: 'ĐVT', align: 'left', format: 'text' },
+          { key: 'opening', label: 'Tồn đầu', align: 'right', format: 'number' },
+          { key: 'totalIn', label: 'Nhập', align: 'right', format: 'number' },
+          { key: 'totalOut', label: 'Xuất', align: 'right', format: 'number' },
+          { key: 'closing', label: 'Tồn cuối', align: 'right', format: 'number' },
+          { key: 'closingValue', label: 'Giá trị tồn cuối', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], inventoryItems = [], inventoryStocks = [], inventoryCategories = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const catName = filters.categoryId ? inventoryCategories.find(c => c.id === filters.categoryId)?.name : null;
+          // Giá vốn BQ theo mặt hàng (gộp các kho).
+          const costMap: Record<string, { v: number; q: number }> = {};
+          inventoryStocks.forEach(s => {
+            costMap[s.itemId] = costMap[s.itemId] || { v: 0, q: 0 };
+            costMap[s.itemId].v += s.quantityOnHand * s.averageCost;
+            costMap[s.itemId].q += s.quantityOnHand;
+          });
+          const avgCost = (itemId: string, fallback: number) => {
+            const c = costMap[itemId];
+            return c && c.q > 0 ? c.v / c.q : fallback;
+          };
+          const delta = (m: any) => {
+            if (m.movementType === 'issue_to_student' && m.issued === false) return 0;
+            return (m.toLocationName ? m.quantity : 0) - (m.fromLocationName ? m.quantity : 0);
+          };
+          const items = inventoryItems.filter(it => !catName || it.categoryName === catName);
+          return items.map(it => {
+            let opening = 0, totalIn = 0, totalOut = 0;
+            inventoryMovements.filter(m => m.itemId === it.id).forEach(m => {
+              const d = delta(m);
+              if (m.movementDate < start) opening += d;
+              else if (m.movementDate <= end) { if (d > 0) totalIn += d; else totalOut += -d; }
+            });
+            const closing = opening + totalIn - totalOut;
+            return {
+              itemCode: it.code, itemName: it.name, unit: it.unit,
+              opening, totalIn, totalOut, closing,
+              closingValue: closing * avgCost(it.id, it.defaultCostPrice),
+            };
+          }).filter(r => r.opening || r.totalIn || r.totalOut || r.closing);
+        },
+      },
+      // #3 — Doanh thu – Giá vốn – Lãi gộp vật tư
+      {
+        id: 'inv_gross_margin',
+        implemented: true,
+        name: 'Doanh thu – Giá vốn – Lãi gộp vật tư',
+        description: 'Doanh thu bán, giá vốn xuất bán và lãi gộp theo nhóm vật tư trong kỳ.',
+        type: 'summary',
+        filters: ['dateRange', 'invCategory'],
+        columns: [
+          { key: 'categoryName', label: 'Nhóm vật tư', align: 'left', format: 'text' },
+          { key: 'qty', label: 'SL bán', align: 'right', format: 'number' },
+          { key: 'revenue', label: 'Doanh thu', align: 'right', format: 'currency' },
+          { key: 'cogs', label: 'Giá vốn', align: 'right', format: 'currency' },
+          { key: 'grossProfit', label: 'Lãi gộp', align: 'right', format: 'currency' },
+          { key: 'marginPct', label: 'Tỷ suất', align: 'right', format: 'text' },
+        ],
+        compute: ({ inventoryMovements = [], inventoryStocks = [], inventoryItems = [], inventoryCategories = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const filterCat = filters.categoryId ? inventoryCategories.find(c => c.id === filters.categoryId)?.name : null;
+          const costMap: Record<string, { v: number; q: number }> = {};
+          inventoryStocks.forEach(s => {
+            costMap[s.itemId] = costMap[s.itemId] || { v: 0, q: 0 };
+            costMap[s.itemId].v += s.quantityOnHand * s.averageCost;
+            costMap[s.itemId].q += s.quantityOnHand;
+          });
+          const itemCost: Record<string, number> = {};
+          inventoryItems.forEach(it => { itemCost[it.id] = it.defaultCostPrice; });
+          const unitCost = (itemId: string) => {
+            const c = costMap[itemId];
+            return c && c.q > 0 ? c.v / c.q : (itemCost[itemId] || 0);
+          };
+          const byCat: Record<string, any> = {};
+          inventoryMovements
+            .filter(m => m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0 && m.movementDate >= start && m.movementDate <= end)
+            .filter(m => !filterCat || m.categoryName === filterCat)
+            .forEach(m => {
+              const cat = m.categoryName || 'Khác';
+              byCat[cat] = byCat[cat] || { categoryName: cat, qty: 0, revenue: 0, cogs: 0 };
+              byCat[cat].qty += m.quantity;
+              byCat[cat].revenue += m.totalAmount;
+              byCat[cat].cogs += unitCost(m.itemId) * m.quantity;
+            });
+          return Object.values(byCat).map((r: any) => ({
+            ...r,
+            grossProfit: r.revenue - r.cogs,
+            marginPct: r.revenue > 0 ? `${Math.round(((r.revenue - r.cogs) / r.revenue) * 100)}%` : '—',
+          }));
+        },
+      },
+      // #4 — Tổng hợp công nợ vật tư
+      {
+        id: 'inv_receivables_summary',
+        implemented: true,
+        name: 'Tổng hợp công nợ vật tư',
+        description: 'Nợ tiền (đã phát chưa thu) và nợ hàng (đã thu chưa phát) tính tới hiện tại.',
+        type: 'summary',
+        filters: ['dateRange'],
+        columns: [
+          { key: 'type', label: 'Loại công nợ', align: 'left', format: 'text' },
+          { key: 'count', label: 'Số giao dịch', align: 'right', format: 'number' },
+          { key: 'qty', label: 'SL', align: 'right', format: 'number' },
+          { key: 'value', label: 'Giá trị', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const inP = (d: string) => d >= start && d <= end;
+          const debtMoney = inventoryMovements.filter(m => m.movementType === 'issue_to_student' && m.paymentStatus === 'unpaid' && (m.totalAmount || 0) > 0 && inP(m.movementDate));
+          const debtGoods = inventoryMovements.filter(m => m.movementType === 'issue_to_student' && m.paymentStatus === 'paid' && m.issued === false && inP(m.movementDate));
+          return [
+            { type: 'Nợ tiền (đã phát – chưa thu)', count: debtMoney.length, qty: debtMoney.reduce((s, m) => s + m.quantity, 0), value: debtMoney.reduce((s, m) => s + (m.totalAmount || 0), 0) },
+            { type: 'Nợ hàng (đã thu – chờ phát)', count: debtGoods.length, qty: debtGoods.reduce((s, m) => s + m.quantity, 0), value: debtGoods.reduce((s, m) => s + (m.totalAmount || 0), 0) },
+          ];
+        },
+      },
+      // #5 — Sổ chi tiết Nhật ký xuất nhập
+      {
+        id: 'inv_movement_detail',
+        implemented: true,
+        name: 'Sổ chi tiết Nhật ký xuất nhập',
+        description: 'Liệt kê chi tiết từng giao dịch nhập/xuất kho trong kỳ.',
+        type: 'detail',
+        filters: ['dateRange', 'invCategory', 'search'],
+        columns: [
+          { key: 'movementDate', label: 'Ngày', align: 'left', format: 'date' },
+          { key: 'typeLabel', label: 'Loại GD', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'quantity', label: 'SL', align: 'right', format: 'number' },
+          { key: 'totalAmount', label: 'Thành tiền', align: 'right', format: 'currency' },
+          { key: 'partner', label: 'Đối tác', align: 'left', format: 'text' },
+          { key: 'status', label: 'Trạng thái', align: 'left', format: 'text' },
+        ],
+        compute: ({ inventoryMovements = [], inventoryCategories = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const catName = filters.categoryId ? inventoryCategories.find(c => c.id === filters.categoryId)?.name : null;
+          const q = (filters.searchQuery || '').toLowerCase().trim();
+          const typeLabels: Record<string, string> = {
+            opening: 'Tồn đầu kỳ', purchase_in: 'Mua nhập kho', return_in: 'Trả lại kho', issue_to_student: 'Bán học viên',
+            issue_to_staff: 'Cấp nhân sự', internal_use: 'Sử dụng nội bộ', adjustment: 'Kiểm kê điều chỉnh', damage: 'Hỏng hóc', loss: 'Mất mát', transfer: 'Chuyển kho',
+          };
+          return inventoryMovements
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .filter(m => !catName || m.categoryName === catName)
+            .filter(m => !q || `${m.itemName} ${m.studentName} ${m.staffName}`.toLowerCase().includes(q))
+            .sort((a, b) => b.movementDate.localeCompare(a.movementDate))
+            .map(m => ({
+              movementDate: m.movementDate,
+              typeLabel: typeLabels[m.movementType] || m.movementType,
+              itemName: m.itemName,
+              quantity: m.quantity,
+              totalAmount: m.totalAmount || 0,
+              partner: m.studentName ? `HV: ${m.studentName}` : m.staffName ? `NV: ${m.staffName}` : '—',
+              status: m.movementType !== 'issue_to_student' ? '—'
+                : m.paymentStatus === 'unpaid' ? 'Chưa thu tiền'
+                : !m.issued ? 'Đã thu – chờ phát'
+                : 'Đã thu – đã phát',
+            }));
+        },
+      },
+      // #7 — Cảnh báo tồn dưới định mức
+      {
+        id: 'inv_low_stock',
+        implemented: true,
+        name: 'Cảnh báo tồn dưới định mức',
+        description: 'Các mặt hàng có số lượng tồn nhỏ hơn hoặc bằng định mức tối thiểu.',
+        type: 'detail',
+        filters: ['invLocation'],
+        columns: [
+          { key: 'itemCode', label: 'Mã SKU', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'locationName', label: 'Kho', align: 'left', format: 'text' },
+          { key: 'quantityOnHand', label: 'SL tồn', align: 'right', format: 'number' },
+          { key: 'minStockLevel', label: 'Định mức', align: 'right', format: 'number' },
+          { key: 'shortBy', label: 'Thiếu', align: 'right', format: 'number' },
+        ],
+        compute: ({ inventoryStocks = [], filters }) => {
+          return inventoryStocks
+            .filter(s => (!filters.locationId || s.locationId === filters.locationId))
+            .filter(s => s.minStockLevel > 0 && s.quantityOnHand <= s.minStockLevel)
+            .map(s => ({
+              itemCode: s.itemCode, itemName: s.itemName, locationName: s.locationName,
+              quantityOnHand: s.quantityOnHand, minStockLevel: s.minStockLevel,
+              shortBy: Math.max(s.minStockLevel - s.quantityOnHand, 0),
+            }))
+            .sort((a, b) => b.shortBy - a.shortBy);
+        },
+      },
+      // #9 — Vật tư theo học viên
+      {
+        id: 'inv_by_student',
+        implemented: true,
+        name: 'Vật tư bán theo học viên',
+        description: 'Các mặt hàng đã bán cho từng học viên kèm trạng thái thu tiền và phát hàng.',
+        type: 'object',
+        filters: ['student', 'dateRange'],
+        columns: [
+          { key: 'studentName', label: 'Học viên', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'quantity', label: 'SL', align: 'right', format: 'number' },
+          { key: 'totalAmount', label: 'Thành tiền', align: 'right', format: 'currency' },
+          { key: 'payment', label: 'Thu tiền', align: 'left', format: 'text' },
+          { key: 'delivery', label: 'Phát hàng', align: 'left', format: 'text' },
+          { key: 'movementDate', label: 'Ngày', align: 'left', format: 'date' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          return inventoryMovements
+            .filter(m => m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0)
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .filter(m => !filters.studentId || m.studentId === filters.studentId)
+            .sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '') || b.movementDate.localeCompare(a.movementDate))
+            .map(m => ({
+              studentName: m.studentName || '—', itemName: m.itemName, quantity: m.quantity, totalAmount: m.totalAmount || 0,
+              payment: m.paymentStatus === 'paid' ? 'Đã thu' : 'Chưa thu',
+              delivery: m.issued ? 'Đã phát' : 'Chờ phát',
+              movementDate: m.movementDate,
+            }));
+        },
+      },
+      // #C1 — Thẻ kho (Kardex) theo mặt hàng
+      {
+        id: 'inv_kardex',
+        implemented: true,
+        name: 'Thẻ kho (Kardex) theo mặt hàng',
+        description: 'Chọn một mặt hàng để xem từng dòng nhập/xuất kèm tồn lũy kế trong kỳ.',
+        type: 'detail',
+        filters: ['invItem', 'dateRange'],
+        columns: [
+          { key: 'movementDate', label: 'Ngày', align: 'left', format: 'date' },
+          { key: 'typeLabel', label: 'Loại GD', align: 'left', format: 'text' },
+          { key: 'partner', label: 'Diễn giải', align: 'left', format: 'text' },
+          { key: 'inQty', label: 'Nhập', align: 'right', format: 'number' },
+          { key: 'outQty', label: 'Xuất', align: 'right', format: 'number' },
+          { key: 'balance', label: 'Tồn lũy kế', align: 'right', format: 'number', noTotal: true },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          if (!filters.itemId) return [];
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const typeLabels: Record<string, string> = {
+            opening: 'Tồn đầu kỳ', purchase_in: 'Mua nhập kho', return_in: 'Trả lại kho', issue_to_student: 'Bán học viên',
+            issue_to_staff: 'Cấp nhân sự', internal_use: 'Sử dụng nội bộ', adjustment: 'Kiểm kê điều chỉnh', damage: 'Hỏng hóc', loss: 'Mất mát', transfer: 'Chuyển kho',
+          };
+          // Cùng quy ước delta như báo cáo Nhập–Xuất–Tồn: issue_to_student chờ phát (issued=false) chưa trừ kho.
+          const delta = (m: any) => {
+            if (m.movementType === 'issue_to_student' && m.issued === false) return 0;
+            return (m.toLocationName ? m.quantity : 0) - (m.fromLocationName ? m.quantity : 0);
+          };
+          const mine = inventoryMovements.filter(m => m.itemId === filters.itemId);
+          let opening = 0;
+          mine.forEach(m => { if (m.movementDate < start) opening += delta(m); });
+          let balance = opening;
+          const rows: any[] = [{
+            movementDate: filters.startDate || '', typeLabel: 'Tồn đầu kỳ', partner: '—',
+            inQty: 0, outQty: 0, balance: opening,
+          }];
+          mine
+            .filter(m => m.movementDate >= start && m.movementDate <= end && delta(m) !== 0)
+            .sort((a, b) => a.movementDate.localeCompare(b.movementDate))
+            .forEach(m => {
+              const d = delta(m);
+              balance += d;
+              rows.push({
+                movementDate: m.movementDate,
+                typeLabel: typeLabels[m.movementType] || m.movementType,
+                partner: m.studentName ? `HV: ${m.studentName}` : m.staffName ? `NV: ${m.staffName}`
+                  : (m.fromLocationName && m.toLocationName ? `${m.fromLocationName} → ${m.toLocationName}` : '—'),
+                inQty: d > 0 ? d : 0,
+                outQty: d < 0 ? -d : 0,
+                balance,
+              });
+            });
+          return rows;
+        },
+      },
+      // #C2 — Giao dịch kho chưa hoàn tất
+      {
+        id: 'inv_incomplete',
+        implemented: true,
+        name: 'Giao dịch kho chưa hoàn tất',
+        description: 'Các giao dịch bán học viên còn dang dở: chưa thu tiền hoặc đã thu nhưng chờ phát hàng.',
+        type: 'detail',
+        filters: ['dateRange'],
+        columns: [
+          { key: 'movementDate', label: 'Ngày', align: 'left', format: 'date' },
+          { key: 'studentName', label: 'Học viên', align: 'left', format: 'text' },
+          { key: 'itemName', label: 'Mặt hàng', align: 'left', format: 'text' },
+          { key: 'quantity', label: 'SL', align: 'right', format: 'number' },
+          { key: 'totalAmount', label: 'Thành tiền', align: 'right', format: 'currency' },
+          { key: 'payment', label: 'Thu tiền', align: 'left', format: 'text' },
+          { key: 'delivery', label: 'Phát hàng', align: 'left', format: 'text' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          return inventoryMovements
+            .filter(m => m.movementType === 'issue_to_student')
+            .filter(m => m.paymentStatus === 'unpaid' || m.issued === false)
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .sort((a, b) => b.movementDate.localeCompare(a.movementDate))
+            .map(m => ({
+              movementDate: m.movementDate,
+              studentName: m.studentName || '—',
+              itemName: m.itemName,
+              quantity: m.quantity,
+              totalAmount: m.totalAmount || 0,
+              payment: m.paymentStatus === 'paid' ? 'Đã thu' : 'Chưa thu',
+              delivery: m.issued ? 'Đã phát' : 'Chờ phát',
+            }));
+        },
+      },
+      // #C3 — Bán vật tư theo lớp
+      {
+        id: 'inv_sales_by_class',
+        implemented: true,
+        name: 'Bán vật tư theo lớp',
+        description: 'Tổng hợp số lượng và doanh thu vật tư bán cho học viên, gom theo lớp đang học.',
+        type: 'object',
+        filters: ['class', 'dateRange'],
+        columns: [
+          { key: 'className', label: 'Lớp học', align: 'left', format: 'text' },
+          { key: 'count', label: 'Số giao dịch', align: 'right', format: 'number' },
+          { key: 'qty', label: 'SL bán', align: 'right', format: 'number' },
+          { key: 'revenue', label: 'Doanh thu', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], students = [], enrollments = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          // Lớp của học viên: ưu tiên enrollment active đầu tiên, fallback className hồ sơ.
+          const classOf = (studentId?: string) => {
+            if (!studentId) return 'Chưa xếp lớp';
+            const active = enrollments.filter(e => e.studentId === studentId && e.isActive);
+            if (active.length > 0) return active[0].className;
+            const stu = students.find(s => s.id === studentId);
+            return stu?.className || 'Chưa xếp lớp';
+          };
+          const byClass: Record<string, any> = {};
+          inventoryMovements
+            .filter(m => m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0)
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .forEach(m => {
+              const cls = classOf(m.studentId);
+              if (filters.classId && cls !== filters.classId) return;
+              byClass[cls] = byClass[cls] || { className: cls, count: 0, qty: 0, revenue: 0 };
+              byClass[cls].count += 1;
+              byClass[cls].qty += m.quantity;
+              byClass[cls].revenue += m.totalAmount || 0;
+            });
+          return Object.values(byClass).sort((a: any, b: any) => b.revenue - a.revenue);
+        },
+      },
+      // #C4 — Giao dịch kho theo người thực hiện
+      {
+        id: 'inv_by_staff',
+        implemented: true,
+        name: 'Giao dịch kho theo người thực hiện',
+        description: 'Tổng hợp số giao dịch kho và doanh thu bán theo người nhập liệu (createdBy). Lọc theo tên người thực hiện.',
+        type: 'object',
+        filters: ['search', 'dateRange'],
+        columns: [
+          { key: 'performer', label: 'Người thực hiện', align: 'left', format: 'text' },
+          { key: 'count', label: 'Số giao dịch', align: 'right', format: 'number' },
+          { key: 'saleCount', label: 'GD bán HV', align: 'right', format: 'number' },
+          { key: 'saleRevenue', label: 'Doanh thu bán', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const q = (filters.searchQuery || '').toLowerCase().trim();
+          const byUser: Record<string, any> = {};
+          inventoryMovements
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .forEach(m => {
+              const who = m.createdBy || '(không rõ)';
+              if (q && !who.toLowerCase().includes(q)) return;
+              byUser[who] = byUser[who] || { performer: who, count: 0, saleCount: 0, saleRevenue: 0 };
+              byUser[who].count += 1;
+              if (m.movementType === 'issue_to_student' && (m.totalAmount || 0) > 0) {
+                byUser[who].saleCount += 1;
+                byUser[who].saleRevenue += m.totalAmount || 0;
+              }
+            });
+          return Object.values(byUser).sort((a: any, b: any) => b.count - a.count);
+        },
+      },
+      // #D1 — Nhập hàng theo nhà cung cấp
+      {
+        id: 'inv_purchase_by_supplier',
+        implemented: true,
+        name: 'Nhập hàng theo nhà cung cấp',
+        description: 'Tổng số lần nhập, số lượng và giá trị nhập kho (purchase_in) gom theo nhà cung cấp trong kỳ.',
+        type: 'summary',
+        filters: ['dateRange'],
+        columns: [
+          { key: 'supplierName', label: 'Nhà cung cấp', align: 'left', format: 'text' },
+          { key: 'count', label: 'Số lần nhập', align: 'right', format: 'number' },
+          { key: 'qty', label: 'SL nhập', align: 'right', format: 'number' },
+          { key: 'value', label: 'Giá trị nhập', align: 'right', format: 'currency' },
+        ],
+        compute: ({ inventoryMovements = [], filters }) => {
+          const start = filters.startDate || '0000-00-00';
+          const end = filters.endDate || '9999-99-99';
+          const bySup: Record<string, any> = {};
+          inventoryMovements
+            .filter(m => m.movementType === 'purchase_in')
+            .filter(m => m.movementDate >= start && m.movementDate <= end)
+            .forEach(m => {
+              const sup = m.supplierName || '(Không rõ NCC)';
+              bySup[sup] = bySup[sup] || { supplierName: sup, count: 0, qty: 0, value: 0 };
+              bySup[sup].count += 1;
+              bySup[sup].qty += m.quantity;
+              bySup[sup].value += m.totalAmount || 0;
+            });
+          return Object.values(bySup).sort((a: any, b: any) => b.value - a.value);
+        },
+      },
+    ]
+  },
+  {
+    id: 'grp_tasks',
+    label: 'Báo cáo giao việc',
+    icon: '🗂️',
+    reports: [
+      {
+        id: 'task_by_assignee_summary',
+        implemented: true,
+        name: 'Tổng hợp công việc theo người thực hiện',
+        description: 'Số công việc được giao, đã xong, đang làm, chờ và quá hạn theo từng người (lọc theo ngày tạo).',
+        type: 'summary',
+        filters: ['dateRange'],
+        columns: [
+          { key: 'assigneeName', label: 'Người thực hiện', align: 'left', format: 'text' },
+          { key: 'total', label: 'Tổng việc', align: 'right', format: 'number' },
+          { key: 'done', label: 'Đã xong', align: 'right', format: 'number' },
+          { key: 'inProgress', label: 'Đang làm', align: 'right', format: 'number' },
+          { key: 'pending', label: 'Chờ xử lý', align: 'right', format: 'number' },
+          { key: 'overdue', label: 'Quá hạn', align: 'right', format: 'number' },
+          { key: 'completionRate', label: 'Tỷ lệ hoàn thành', align: 'right', format: 'text' },
+        ],
+        compute: ({ assignedTasks = [], filters }) => {
+          const start = filters.startDate;
+          const end = filters.endDate;
+          const today = new Date().toISOString().slice(0, 10);
+          const byUser: Record<string, any> = {};
+          assignedTasks
+            .filter(t => {
+              const d = (t.createdAt || '').slice(0, 10);
+              if (start && d && d < start) return false;
+              if (end && d && d > end) return false;
+              return true;
+            })
+            .forEach(t => {
+              const k = t.assigneeName || '(không rõ)';
+              const g = byUser[k] || (byUser[k] = { assigneeName: k, total: 0, done: 0, inProgress: 0, pending: 0, overdue: 0 });
+              g.total += 1;
+              if (t.status === 'done') g.done += 1;
+              else if (t.status === 'in_progress') g.inProgress += 1;
+              else g.pending += 1;
+              if (t.status !== 'done' && t.dueDate && t.dueDate < today) g.overdue += 1;
+            });
+          return Object.values(byUser)
+            .map((g: any) => ({ ...g, completionRate: g.total > 0 ? `${Math.round((g.done / g.total) * 100)}%` : '—' }))
+            .sort((a: any, b: any) => b.total - a.total);
+        },
+      },
+      {
+        id: 'task_overdue_detail',
+        implemented: true,
+        name: 'Công việc quá hạn chưa hoàn thành',
+        description: 'Các công việc đã quá hạn xử lý mà chưa ở trạng thái hoàn thành.',
+        type: 'detail',
+        filters: ['search'],
+        columns: [
+          { key: 'title', label: 'Công việc', align: 'left', format: 'text' },
+          { key: 'assigneeName', label: 'Người thực hiện', align: 'left', format: 'text' },
+          { key: 'dueDate', label: 'Hạn xử lý', align: 'center', format: 'date' },
+          { key: 'priority', label: 'Ưu tiên', align: 'center', format: 'text' },
+          { key: 'status', label: 'Trạng thái', align: 'center', format: 'text' },
+          { key: 'assignedByName', label: 'Người giao', align: 'left', format: 'text' },
+        ],
+        compute: ({ assignedTasks = [], filters }) => {
+          const today = new Date().toISOString().slice(0, 10);
+          const q = (filters.searchQuery || '').toLowerCase().trim();
+          const prio: Record<string, string> = { low: 'Thấp', normal: 'Thường', high: 'Cao' };
+          const stat: Record<string, string> = { pending: 'Chờ xử lý', in_progress: 'Đang làm', done: 'Hoàn thành' };
+          return assignedTasks
+            .filter(t => t.status !== 'done' && t.dueDate && t.dueDate < today)
+            .filter(t => !q || `${t.title} ${t.assigneeName}`.toLowerCase().includes(q))
+            .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+            .map(t => ({
+              title: t.title,
+              assigneeName: t.assigneeName,
+              dueDate: t.dueDate,
+              priority: prio[t.priority] || t.priority,
+              status: stat[t.status] || t.status,
+              assignedByName: t.assignedByName || '—',
+            }));
+        },
+      },
+      {
+        id: 'task_detail',
+        implemented: true,
+        name: 'Chi tiết công việc theo kỳ',
+        description: 'Liệt kê công việc tạo trong kỳ kèm trạng thái, hạn, người thực hiện và ghi chú hoàn thành.',
+        type: 'detail',
+        filters: ['dateRange', 'search'],
+        columns: [
+          { key: 'createdAt', label: 'Ngày tạo', align: 'center', format: 'date' },
+          { key: 'title', label: 'Công việc', align: 'left', format: 'text' },
+          { key: 'assigneeName', label: 'Người thực hiện', align: 'left', format: 'text' },
+          { key: 'dueDate', label: 'Hạn', align: 'center', format: 'date' },
+          { key: 'priority', label: 'Ưu tiên', align: 'center', format: 'text' },
+          { key: 'status', label: 'Trạng thái', align: 'center', format: 'text' },
+          { key: 'completionNote', label: 'Ghi chú hoàn thành', align: 'left', format: 'text' },
+        ],
+        compute: ({ assignedTasks = [], filters }) => {
+          const start = filters.startDate;
+          const end = filters.endDate;
+          const q = (filters.searchQuery || '').toLowerCase().trim();
+          const prio: Record<string, string> = { low: 'Thấp', normal: 'Thường', high: 'Cao' };
+          const stat: Record<string, string> = { pending: 'Chờ xử lý', in_progress: 'Đang làm', done: 'Hoàn thành' };
+          return assignedTasks
+            .filter(t => {
+              const d = (t.createdAt || '').slice(0, 10);
+              if (start && d && d < start) return false;
+              if (end && d && d > end) return false;
+              if (q && !`${t.title} ${t.assigneeName}`.toLowerCase().includes(q)) return false;
+              return true;
+            })
+            .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+            .map(t => ({
+              createdAt: (t.createdAt || '').slice(0, 10),
+              title: t.title,
+              assigneeName: t.assigneeName,
+              dueDate: t.dueDate || '—',
+              priority: prio[t.priority] || t.priority,
+              status: stat[t.status] || t.status,
+              completionNote: t.completionNote || '—',
+            }));
+        },
+      },
     ]
   }
 ];

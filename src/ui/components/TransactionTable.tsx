@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Transaction, PaymentMethod, RevenueCategory, AppSettings } from '../../shared/types';
 import { formatCurrency, formatDate } from '../../shared/utils';
+import { isInternalTransfer } from '../../shared/constants';
 import DateInput from './ui/DateInput';
 import { Check, CheckCircle, Circle, FileText, Share, Receipt, Edit, Clock, X, AlertCircle, Search, Filter, Calendar, Download } from 'lucide-react';
 import ReceiptModal from './ReceiptModal';
@@ -133,7 +134,10 @@ export default function TransactionTable({
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const totalAmount = filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
+  // Loại các giao dịch "Chuyển số dư" nội bộ khỏi tổng thu (không phải doanh thu thực).
+  const totalAmount = filteredTransactions
+    .filter(t => !isInternalTransfer(t.paymentMethod))
+    .reduce((sum, t) => sum + t.amount, 0);
   const reconciledCount = filteredTransactions.filter(t => t.isReconciled).length;
   const invoicedCount = filteredTransactions.filter(t => t.isInvoiced).length;
 

@@ -1,4 +1,5 @@
 import { Student, Transaction, AttendanceRecord, Class, TuitionSummary, FeeChangeLog, Enrollment, EnrollmentBreakdown } from '../types';
+import { isTuitionRevenue } from '../constants';
 
 export function parseFeeHistory(feeHistory: any): FeeChangeLog[] {
   if (!feeHistory) return [];
@@ -89,7 +90,7 @@ export function computeTuitionSummary(
   const totalPaidOffline = transactions
     .filter(t =>
       t.studentId === student.id &&
-      t.revenueCategory === 'Học phí offline' &&
+      isTuitionRevenue(t.revenueCategory) &&
       t.studyType !== 'Online'
     )
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);

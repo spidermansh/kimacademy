@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { REPORT_GROUPS, ReportDefinition } from '../../shared/business/reports';
-import { formatCurrency, formatDate } from '../../shared/utils';
+import { formatCurrency, formatDate, api, auth } from '../../shared/utils';
 import * as XLSX from 'xlsx-js-style';
 import {
   Search, Calendar, Users, BookOpen, Wallet,
@@ -9,6 +9,7 @@ import {
   TrendingUp, FileText, LayoutDashboard, Download
 } from 'lucide-react';
 import DateInput from '../components/ui/DateInput';
+import SearchableSelect from '../components/ui/SearchableSelect';
 
 interface Props {
   transactions: any[];
@@ -73,11 +74,69 @@ export default function ReportsDashboard({
     staffId: '',
     classStatus: 'all',
     reconciliationStatus: '',
-    searchQuery: ''
+    searchQuery: '',
+    itemId: '',
+    categoryId: '',
+    locationId: ''
   });
 
   const [appliedFilters, setAppliedFilters] = useState(filters);
   const [reportTime, setReportTime] = useState<string>('');
+
+  // Dữ liệu kho vật tư cho các báo cáo nhóm "grp_inventory" (tự nạp).
+  const [invRaw, setInvRaw] = useState<{ items: any[]; categories: any[]; stocks: any[]; movements: any[]; locations: any[] }>({ items: [], categories: [], stocks: [], movements: [], locations: [] });
+  const [invLoading, setInvLoading] = useState(true);
+  useEffect(() => {
+    setInvLoading(true);
+    Promise.all([
+      api.getInventoryItems(), api.getInventoryCategories(),
+      api.getInventoryStocks(), api.getInventoryMovements(), api.getInventoryLocations(),
+    ]).then(([items, categories, stocks, movements, locations]) => {
+      setInvRaw({ items, categories, stocks, movements, locations });
+    }).catch(() => { /* phân hệ kho có thể trống */ }).finally(() => setInvLoading(false));
+  }, []);
+
+  // Công việc giao tay (cho nhóm báo cáo "Báo cáo giao việc").
+  const [assignedTasks, setAssignedTasks] = useState<any[]>([]);
+  useEffect(() => {
+    api.getTasks().then(t => setAssignedTasks(Array.isArray(t) ? t : [])).catch(() => { /* có thể trống */ });
+  }, []);
+
+  // Map dữ liệu kho thô (API) sang shape phẳng cho report engine.
+  const inventoryData = useMemo(() => {
+    const itemMap = new Map(invRaw.items.map((it: any) => [it.id, it]));
+    const catName = (item: any) => item?.category?.name || invRaw.categories.find((c: any) => c.id === item?.categoryId)?.name || 'Khác';
+    const inventoryItems = invRaw.items.map((it: any) => ({
+      id: it.id, code: it.code, name: it.name, unit: it.unit,
+      categoryId: it.categoryId, categoryName: catName(it),
+      minStockLevel: it.minStockLevel || 0, defaultSalePrice: it.defaultSalePrice || 0, defaultCostPrice: it.defaultCostPrice || 0,
+    }));
+    const inventoryStocks = invRaw.stocks.map((s: any) => {
+      const it = itemMap.get(s.itemId);
+      return {
+        itemId: s.itemId, itemCode: it?.code || '', itemName: s.item?.name || it?.name || '', unit: s.item?.unit || it?.unit || '',
+        categoryName: catName(it), locationId: s.locationId, locationName: s.location?.name || '',
+        quantityOnHand: s.quantityOnHand || 0, averageCost: s.averageCost || 0,
+        minStockLevel: it?.minStockLevel || 0, salePrice: it?.defaultSalePrice || 0,
+      };
+    });
+    const inventoryMovements = invRaw.movements.map((m: any) => {
+      const it = itemMap.get(m.itemId);
+      return {
+        id: m.id, movementDate: m.movementDate, movementType: m.movementType,
+        itemId: m.itemId, itemCode: it?.code || '', itemName: m.item?.name || it?.name || '', unit: m.item?.unit || it?.unit || '',
+        categoryName: catName(it),
+        fromLocationName: m.fromLocation?.name || '', toLocationName: m.toLocation?.name || '',
+        quantity: m.quantity || 0, unitCost: m.unitCost || 0, unitSalePrice: m.unitSalePrice || 0, totalAmount: m.totalAmount || 0,
+        studentId: m.relatedStudentId || undefined, studentName: m.relatedStudent?.name || '', staffName: m.relatedStaff?.name || '',
+        paymentStatus: m.paymentStatus, issued: m.issued !== false, paymentDate: m.paymentDate || undefined, paymentMethod: m.paymentMethod || undefined,
+        createdBy: m.createdBy || '',
+        supplierId: m.supplierId || undefined, supplierName: m.supplier?.name || '',
+      };
+    });
+    const inventoryCategories = invRaw.categories.map((c: any) => ({ id: c.id, name: c.name }));
+    return { inventoryItems, inventoryStocks, inventoryMovements, inventoryCategories };
+  }, [invRaw]);
 
   const activeGroup = useMemo(() => {
     return REPORT_GROUPS.find(g => g.id === selectedGroupId) || REPORT_GROUPS[0];
@@ -86,6 +145,13 @@ export default function ReportsDashboard({
   const availableReports = useMemo(() => {
     return activeGroup.reports.filter(r => r.type === selectedType);
   }, [activeGroup, selectedType]);
+
+  // Đếm số báo cáo (đã triển khai) theo từng dạng trong nhóm hiện tại — hiển thị trên tab.
+  const typeCounts = useMemo(() => {
+    const c: Record<string, number> = { summary: 0, detail: 0, object: 0 };
+    activeGroup.reports.forEach(r => { if (r.implemented) c[r.type] = (c[r.type] || 0) + 1; });
+    return c;
+  }, [activeGroup]);
 
   // Auto select report when Group or Type changes
   useEffect(() => {
@@ -139,25 +205,27 @@ export default function ReportsDashboard({
         filters: appliedFilters,
         systemParameters,
         admissionLeads,
-        enrollments
+        enrollments,
+        assignedTasks,
+        ...inventoryData
       });
     } catch (err) {
       console.error('Lỗi khi tính toán dữ liệu báo cáo:', err);
       return [];
     }
-  }, [activeReport, students, classes, transactions, attendance, expenses, staff, teachingLogs, advances, salaries, dailyCloses, auditLogs, appliedFilters, systemParameters, admissionLeads]);
+  }, [activeReport, students, classes, transactions, attendance, expenses, staff, teachingLogs, advances, salaries, dailyCloses, auditLogs, appliedFilters, systemParameters, admissionLeads, inventoryData, assignedTasks]);
 
   // Totals Row calculation
   const hasTotals = useMemo(() => {
     if (!activeReport || !activeReport.implemented || reportData.length === 0) return false;
-    return activeReport.columns.some(col => col.format === 'currency' || col.format === 'number');
+    return activeReport.columns.some(col => (col.format === 'currency' || col.format === 'number') && !col.noTotal);
   }, [activeReport, reportData]);
 
   const totals = useMemo(() => {
     if (!hasTotals || !activeReport) return {};
     const t: Record<string, number> = {};
     activeReport.columns.forEach(col => {
-      if (col.format === 'currency' || col.format === 'number') {
+      if ((col.format === 'currency' || col.format === 'number') && !col.noTotal) {
         t[col.key] = reportData.reduce((sum, row) => {
           const val = Number(row[col.key]);
           return sum + (isNaN(val) ? 0 : val);
@@ -194,6 +262,8 @@ export default function ReportsDashboard({
   const handleExportExcel = () => {
     if (!activeReport || reportData.length === 0) return;
 
+    const currentUser = auth.getUser();
+
     // 1. Build Info Sheet
     const infoAoa = [
       ['KIM ACADEMY - PHÂN HỆ BÁO CÁO THỐNG KÊ'],
@@ -201,7 +271,7 @@ export default function ReportsDashboard({
       ['Tên báo cáo:', activeReport.name],
       ['Mô tả:', activeReport.description],
       ['Thời gian xuất:', new Date().toLocaleTimeString('vi-VN') + ' ' + formatDate(new Date().toISOString())],
-      ['Người xuất:', 'Kế toán trung tâm'],
+      ['Người xuất:', currentUser?.name || currentUser?.username || 'Kế toán trung tâm'],
       [],
       ['BỘ LỌC ĐÃ ÁP DỤNG:'],
     ];
@@ -246,6 +316,18 @@ export default function ReportsDashboard({
     if (activeReport.filters.includes('search') && appliedFilters.searchQuery) {
       infoAoa.push([' - Từ khóa tìm kiếm:', appliedFilters.searchQuery]);
     }
+    if (activeReport.filters.includes('invCategory') && appliedFilters.categoryId) {
+      const c = invRaw.categories.find((x: any) => x.id === appliedFilters.categoryId);
+      infoAoa.push([' - Nhóm vật tư:', c ? c.name : appliedFilters.categoryId]);
+    }
+    if (activeReport.filters.includes('invLocation') && appliedFilters.locationId) {
+      const l = invRaw.locations.find((x: any) => x.id === appliedFilters.locationId);
+      infoAoa.push([' - Kho lưu trữ:', l ? l.name : appliedFilters.locationId]);
+    }
+    if (activeReport.filters.includes('invItem') && appliedFilters.itemId) {
+      const it = invRaw.items.find((x: any) => x.id === appliedFilters.itemId);
+      infoAoa.push([' - Mặt hàng:', it ? `${it.code ? it.code + ' - ' : ''}${it.name}` : appliedFilters.itemId]);
+    }
 
     const wsInfo = XLSX.utils.aoa_to_sheet(infoAoa);
 
@@ -276,7 +358,7 @@ export default function ReportsDashboard({
     if (hasTotals) {
       const totalRow = activeReport.columns.map((col, idx) => {
         if (idx === 0) return 'TỔNG CỘNG';
-        if (col.format === 'currency' || col.format === 'number') {
+        if ((col.format === 'currency' || col.format === 'number') && !col.noTotal) {
           return totals[col.key] || 0;
         }
         return '';
@@ -393,7 +475,7 @@ export default function ReportsDashboard({
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            📊 Báo cáo Tổng hợp
+            📊 Báo cáo Tổng hợp ({typeCounts.summary})
           </button>
           <button
             onClick={() => setSelectedType('detail')}
@@ -403,7 +485,7 @@ export default function ReportsDashboard({
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            📋 Báo cáo Chi tiết
+            📋 Báo cáo Chi tiết ({typeCounts.detail})
           </button>
           <button
             onClick={() => setSelectedType('object')}
@@ -413,7 +495,7 @@ export default function ReportsDashboard({
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            👤 Báo cáo theo Đối tượng
+            👤 Báo cáo theo Đối tượng ({typeCounts.object})
           </button>
         </div>
         <div className="hidden lg:flex items-center gap-2 pr-3">
@@ -565,16 +647,17 @@ export default function ReportsDashboard({
                   {activeReport.filters.includes('student') && (
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Học viên</label>
-                      <select
+                      <SearchableSelect
                         value={filters.studentId}
-                        onChange={e => setFilters(prev => ({ ...prev, studentId: e.target.value }))}
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                      >
-                        <option value="">-- Tất cả học viên --</option>
-                        {students.map(s => (
-                          <option key={s.id} value={s.id}>{s.name} ({s.englishName || '—'})</option>
-                        ))}
-                      </select>
+                        onChange={v => setFilters(prev => ({ ...prev, studentId: v }))}
+                        placeholder="Gõ tên / SĐT để tìm học viên..."
+                        emptyOptionLabel="-- Tất cả học viên --"
+                        options={students.map(s => ({
+                          value: s.id,
+                          label: `${s.name} (${s.englishName || '—'})`,
+                          keywords: `${s.parentPhone || ''} ${s.code || ''} ${s.className || ''}`,
+                        }))}
+                      />
                     </div>
                   )}
 
@@ -707,6 +790,54 @@ export default function ReportsDashboard({
                       </div>
                     </div>
                   )}
+
+                  {activeReport.filters.includes('invCategory') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nhóm vật tư</label>
+                      <select
+                        value={filters.categoryId}
+                        onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="">-- Tất cả nhóm --</option>
+                        {invRaw.categories.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {activeReport.filters.includes('invLocation') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Kho lưu trữ</label>
+                      <select
+                        value={filters.locationId}
+                        onChange={e => setFilters(prev => ({ ...prev, locationId: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="">-- Tất cả kho --</option>
+                        {invRaw.locations.map((l: any) => (
+                          <option key={l.id} value={l.id}>{l.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {activeReport.filters.includes('invItem') && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Mặt hàng</label>
+                      <select
+                        value={filters.itemId}
+                        onChange={e => setFilters(prev => ({ ...prev, itemId: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="">-- Chọn mặt hàng --</option>
+                        {invRaw.items.map((it: any) => (
+                          <option key={it.id} value={it.id}>{it.code ? `${it.code} - ` : ''}{it.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -770,6 +901,11 @@ export default function ReportsDashboard({
                 <p className="text-xs font-extrabold text-slate-500">Báo cáo không dùng trong giai đoạn chạy thử</p>
                 <p className="text-[10px] text-slate-400 mt-1">Sẽ triển khai sau.</p>
               </div>
+            ) : selectedGroupId === 'grp_inventory' && invLoading && reportData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                <Clock className="w-12 h-12 stroke-1 opacity-50 mb-3 animate-pulse text-indigo-300" />
+                <p className="text-xs font-extrabold text-slate-500">Đang tải dữ liệu kho...</p>
+              </div>
             ) : reportData.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-slate-400">
                 <CalendarCheck className="w-12 h-12 stroke-1 opacity-50 mb-3 text-slate-300" />
@@ -825,7 +961,7 @@ export default function ReportsDashboard({
                         >
                           {idx === 0 ? (
                             'TỔNG CỘNG'
-                          ) : col.format === 'currency' || col.format === 'number' ? (
+                          ) : (col.format === 'currency' || col.format === 'number') && !col.noTotal ? (
                             formatReportCell(totals[col.key], col.format)
                           ) : (
                             ''

@@ -157,6 +157,12 @@ const TAB_LOOKUP: Record<TabId, { label: string; icon: React.ReactNode; color: s
     color: 'orange',
     subtitle: 'Hiệu suất đứng lớp & chi phí lương nhân viên'
   },
+  'bc-inventory': {
+    label: 'Báo cáo kho vật tư',
+    icon: <Package className="w-5 h-5" />,
+    color: 'indigo',
+    subtitle: 'Tồn kho, xuất nhập, lãi gộp & công nợ vật tư'
+  },
   'bc-audit': {
     label: 'Báo cáo đối soát',
     icon: <Clock className="w-5 h-5" />,
@@ -168,6 +174,12 @@ const TAB_LOOKUP: Record<TabId, { label: string; icon: React.ReactNode; color: s
     icon: <PhoneCall className="w-5 h-5" />,
     color: 'pink',
     subtitle: 'Tỷ lệ chuyển đổi phễu khách hàng'
+  },
+  'bc-tasks': {
+    label: 'Báo cáo giao việc',
+    icon: <ClipboardCheck className="w-5 h-5" />,
+    color: 'amber',
+    subtitle: 'Tổng hợp công việc giao tay theo người & tiến độ'
   },
   'huong-dan': {
     label: 'Hướng dẫn sử dụng',
@@ -202,8 +214,10 @@ const getGroupIdFromTab = (tab: TabId): string => {
     case 'bc-tuition': return 'grp_tuition';
     case 'bc-finance': return 'grp_finance';
     case 'bc-staff': return 'grp_staff';
+    case 'bc-inventory': return 'grp_inventory';
     case 'bc-audit': return 'grp_reconciliation';
     case 'bc-leads': return 'grp_admission';
+    case 'bc-tasks': return 'grp_tasks';
     default: return 'grp_overview';
   }
 };
@@ -343,9 +357,14 @@ function AppInner() {
 
   const submitTransaction = async (data: any) => {
     try {
-      const newTransaction = await api.createTransaction(data);
-      setTransactions(prev => [newTransaction, ...prev]);
-      const studentData = await api.getStudents();
+      await api.createTransaction(data);
+      // Lấy lại danh sách đã format (kèm tên học viên + lớp) thay vì chèn bản ghi
+      // thô từ POST — tránh dòng mới bị trống tên/lớp cho tới khi refresh.
+      const [txData, studentData] = await Promise.all([
+        api.getTransactions(),
+        api.getStudents(),
+      ]);
+      setTransactions(txData);
       setStudents(studentData.map((s: any) => populateStudentEnrollment(s, enrollments)));
 
       if (data.revenueCategory === 'Học phí offline') {
@@ -658,8 +677,10 @@ function AppInner() {
               'grp_tuition': 'bc-tuition',
               'grp_finance': 'bc-finance',
               'grp_staff': 'bc-staff',
+              'grp_inventory': 'bc-inventory',
               'grp_reconciliation': 'bc-audit',
               'grp_admission': 'bc-leads',
+              'grp_tasks': 'bc-tasks',
             };
             if (tabMap[newGroupId]) {
               handleTabChange(tabMap[newGroupId]);

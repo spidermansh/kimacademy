@@ -1,25 +1,36 @@
 import { spawn } from 'child_process';
 
-console.log('🚀 Đang khởi động hệ thống quản lý Kim Academy v3...');
-console.log('👉 Frontend (Vite) sẽ chạy ở: http://localhost:3025');
-console.log('👉 Backend (Express) sẽ chạy ở: http://localhost:3021');
+const frontendPort = process.env.FRONTEND_PORT || process.env.VITE_DEV_PORT || '3025';
+const backendPort = process.env.PORT || '3021';
+const apiProxyTarget = process.env.API_PROXY_TARGET || `http://localhost:${backendPort}`;
+
+console.log('Starting Kim Academy v3 local dev...');
+console.log(`Frontend (Vite): http://localhost:${frontendPort}`);
+console.log(`Backend (Express): http://localhost:${backendPort}`);
+console.log(`API proxy target: ${apiProxyTarget}`);
 console.log('------------------------------------------------------------');
 
-// Khởi chạy Vite Client
-const vite = spawn('npx', ['vite', '--port=3025', '--host=0.0.0.0'], {
+const vite = spawn('npx', ['vite', `--port=${frontendPort}`, '--host=0.0.0.0'], {
   stdio: 'inherit',
   shell: true,
+  env: {
+    ...process.env,
+    VITE_DEV_PORT: frontendPort,
+    API_PROXY_TARGET: apiProxyTarget,
+  },
 });
 
-// Khởi chạy Express Server
 const server = spawn('npx', ['tsx', 'src/api/server.ts'], {
   stdio: 'inherit',
   shell: true,
+  env: {
+    ...process.env,
+    PORT: backendPort,
+  },
 });
 
-// Dọn dẹp các tiến trình khi thoát
 const cleanUp = () => {
-  console.log('\n🛑 Đang dừng toàn bộ các tiến trình v3...');
+  console.log('\nStopping Kim Academy v3 local dev...');
   vite.kill('SIGINT');
   server.kill('SIGINT');
   process.exit(0);

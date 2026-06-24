@@ -1,0 +1,24 @@
+# Chuẩn hóa encoding & line-ending để tránh tái diễn lỗi mojibake/CRLF.
+* text=auto eol=lf
+
+# Mã nguồn & cấu hình luôn là UTF-8, LF.
+*.ts   text eol=lf working-tree-encoding=UTF-8
+*.tsx  text eol=lf working-tree-encoding=UTF-8
+*.js   text eol=lf working-tree-encoding=UTF-8
+*.mjs  text eol=lf working-tree-encoding=UTF-8
+*.json text eol=lf working-tree-encoding=UTF-8
+*.css  text eol=lf working-tree-encoding=UTF-8
+*.md   text eol=lf working-tree-encoding=UTF-8
+*.sql  text eol=lf working-tree-encoding=UTF-8
+*.prisma text eol=lf working-tree-encoding=UTF-8
+
+# Nhị phân — không đụng tới.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.xlsx binary
+*.woff binary
+*.woff2 binary

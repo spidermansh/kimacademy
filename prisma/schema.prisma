@@ -8,20 +8,42 @@ generator client {
 
 // 1. User - Tài khoản người dùng
 model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String
-  name      String
-  role      String
-  staffId   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  username     String   @unique
+  password     String
+  name         String
+  role         String
+  staffId      String?
+  tokenVersion Int      @default(0) // tăng để thu hồi toàn bộ token đang phát hành cho user
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// 1b. AssignedTask - Công việc giao tay (quản lý giao cho user khác / NV tự tạo cho mình)
+model AssignedTask {
+  id               String    @id @default(uuid())
+  title            String    // tên công việc
+  content          String?   // nội dung chi tiết
+  dueDate          DateTime? @db.Date // hạn xử lý (YYYY-MM-DD) — xem DATE_ONLY_FIELDS
+  priority         String    @default("normal") // low | normal | high
+  status           String    @default("pending") // pending | in_progress | done
+  assigneeUserId   String    // user được giao
+  assigneeName     String    // tên hiển thị người được giao (denormalized)
+  assignedByUserId String?   // user giao việc (id, KHÔNG FK cứng — giữ dấu lịch sử)
+  assignedByName   String?
+  completionNote   String?   // ghi chú khi báo cáo hoàn thành
+  completedAt      DateTime? // thời điểm hoàn thành (timestamp)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([assigneeUserId, status])
+  @@index([dueDate])
 }
 
 // 2. StaffMember - Nhân sự (Giáo viên, Trợ giảng, Văn phòng...)
 model StaffMember {
   id                          String             @id @default(uuid())
-  code                        String             @unique // Mã nhân sự duy nhất
+  code                        String             @unique @default(cuid()) // Mã nhân sự duy nhất
   name                        String
   role                        String
   phone                       String?
@@ -32,7 +54,7 @@ model StaffMember {
   otherMonthlyAllowanceNote   String?
   bankAccount                 String?
   bankName                    String?
-  startDate                   String
+  startDate                   DateTime @db.Date
   status                      String             @default("active")
   notes                       String?
   taxMethod                   String             @default("fixed_percent")
@@ -43,7 +65,7 @@ model StaffMember {
   applyUnemploymentInsurance  Boolean            @default(false)
   insuranceBaseSalary         Float?
   ratePerHour                 Float?             @default(0.0)
-  salaryHistory               String             @default("[]")
+  salaryHistory               Json               @default("[]")
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
   sessions                    Session[]          @relation("TaughtSessions")
@@ -58,7 +80,7 @@ model StaffMember {
 // 3. Class - Lớp học
 model Class {
   id                   String             @id @default(uuid())
-  code                 String             @unique // Mã lớp học duy nhất
+  code                 String             @unique @default(cuid()) // Mã lớp học duy nhất
   name                 String             @unique
   type                 String             @default("offline")
   teacherId            String             // Bắt buộc link GV chính
@@ -66,7 +88,7 @@ model Class {
   maxStudents          Int?
   status               String             @default("active")
   defaultFeePerSession Float              @default(0.0)
-  scheduleDays         String             @default("[]") // stored as JSON array string
+  scheduleDays         Json               @default("[]") // JSON array (jsonb)
   scheduleTime         String?
   description          String?
   createdAt            DateTime           @default(now())
@@ -75,24 +97,27 @@ model Class {
   sessions             Session[]
   attendanceRecords    AttendanceRecord[]
   nameHistory          ClassNameHistory[]
+
+  @@index([teacherId, status])
 }
 
 // 4. Student - Học viên
 model Student {
   id                String              @id @default(uuid())
-  code              String              @unique // Mã học viên duy nhất
+  code              String              @unique @default(cuid()) // Mã học viên duy nhất
   name              String
   vietnameseName    String
   englishName       String
   gender            String?
-  birthDate         String?             // YYYY-MM-DD
+  birthDate         DateTime? @db.Date // YYYY-MM-DD
   status            String              @default("active") // active | waiting_class | suspended | left | trial
-  enrollDate        String?             // YYYY-MM-DD
+  enrollDate        DateTime? @db.Date // YYYY-MM-DD
   notes             String?
   admissionLeadId   String?
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   createdBy         String
+  createdById         String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   updatedBy         String?
   guardianContacts  GuardianContact[]
   enrollments       Enrollment[]
@@ -126,15 +151,18 @@ model Enrollment {
   classId           String
   class             Class              @relation(fields: [classId], references: [id])
   feePerSession     Float
-  startDate         String             // YYYY-MM-DD
-  endDate           String?            // YYYY-MM-DD
+  startDate         DateTime @db.Date // YYYY-MM-DD
+  endDate           DateTime? @db.Date // YYYY-MM-DD
   isActive          Boolean            @default(true)
   transferNote      String?
-  feeHistory        String             @default("[]") // stored as JSON array string
+  feeHistory        Json               @default("[]") // JSON array (jsonb)
   createdAt         DateTime           @default(now())
   createdBy         String
+  createdById         String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   attendanceRecords AttendanceRecord[]
   ledgerEntries     TuitionLedgerEntry[]
+
+  @@index([studentId, classId, isActive])
 }
 
 // 7. Session - Buổi học thực tế
@@ -142,7 +170,7 @@ model Session {
   id                     String             @id @default(uuid())
   classId                String
   class                  Class              @relation(fields: [classId], references: [id])
-  date                   String             // YYYY-MM-DD
+  date                   DateTime @db.Date // YYYY-MM-DD
   teacherId              String
   teacher                StaffMember        @relation("TaughtSessions", fields: [teacherId], references: [id])
   isSubstitute           Boolean            @default(false)
@@ -152,7 +180,11 @@ model Session {
   notes                  String?
   createdAt              DateTime           @default(now())
   createdBy              String
+  createdById              String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   attendanceRecords      AttendanceRecord[]
+
+  @@index([classId, date])
+  @@index([teacherId, date])
 }
 
 // 8. AttendanceRecord - Nhật ký điểm danh
@@ -166,7 +198,7 @@ model AttendanceRecord {
   class            Class       @relation(fields: [classId], references: [id])
   enrollmentId     String
   enrollment       Enrollment  @relation(fields: [enrollmentId], references: [id])
-  date             String      // YYYY-MM-DD
+  date             DateTime @db.Date // YYYY-MM-DD
   status           String      // present | absent | excused
   sessionsDeducted Int         // 1 or 0
   feeApplied       Float       // Phí thực tế snapshot
@@ -174,6 +206,11 @@ model AttendanceRecord {
   source           String?     @default("manual") // manual | import
   createdAt        DateTime    @default(now())
   createdBy        String
+  createdById        String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
+
+  @@index([date, classId])
+  @@index([studentId, date])
+  @@index([enrollmentId])
 }
 
 // 9. TuitionTransaction - Giao dịch đóng học phí
@@ -183,17 +220,21 @@ model TuitionTransaction {
   student       Student  @relation(fields: [studentId], references: [id])
   enrollmentId  String?
   amount        Float
-  paymentDate   String   // YYYY-MM-DD
+  paymentDate   DateTime @db.Date // YYYY-MM-DD
   paymentMethod String
   term          String?  // Kỳ thu (e.g. "Tháng 6/2026")
   notes         String?
   isReconciled  Boolean  @default(false)
   isInvoiced    Boolean  @default(false)
-  editHistory   String   @default("[]") // stored as JSON array string
+  editHistory   Json     @default("[]") // JSON array (jsonb)
   source        String?  @default("manual") // manual | import
   importBatchId String?
   createdAt     DateTime @default(now())
   createdBy     String
+  createdById     String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
+
+  @@index([paymentDate])
+  @@index([studentId, enrollmentId])
 }
 
 // 10. RevenueOther - Doanh thu khác (bán sách, đồng phục, lệ phí thi...)
@@ -201,7 +242,7 @@ model RevenueOther {
   id            String             @id @default(uuid())
   category      String             // Sách | Đồng phục | Phí thi | Khác
   amount        Float
-  paymentDate   String             // YYYY-MM-DD
+  paymentDate   DateTime @db.Date // YYYY-MM-DD
   paymentMethod String
   studentId     String?
   student       Student?           @relation(fields: [studentId], references: [id])
@@ -209,7 +250,11 @@ model RevenueOther {
   isReconciled  Boolean            @default(false)
   createdAt     DateTime           @default(now())
   createdBy     String
+  createdById     String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   inventoryMovements InventoryMovement[]
+
+  @@index([paymentDate])
+  @@index([studentId])
 }
 
 // 11. TuitionLedgerEntry - Sổ cái học phí riêng của từng Enrollment
@@ -231,7 +276,7 @@ model AdmissionLead {
   id                 String    @id @default(uuid())
   leadCode           String?
   studentName        String
-  dateOfBirth        String?
+  dateOfBirth        DateTime? @db.Date
   address            String?
   parentName         String?
   parentPhone        String
@@ -240,13 +285,13 @@ model AdmissionLead {
   learningNeed       String?
   consultationNote   String?
   assignedCounselor  String?
-  registrationDate   String
+  registrationDate   DateTime @db.Date
   status             String    @default("new")
-  testScheduleDate   String?
+  testScheduleDate   DateTime? @db.Date
   testScheduleTime   String?
   testAssignee       String?
   testScheduleNote   String?
-  testDate           String?
+  testDate           DateTime? @db.Date
   testType           String?
   testScore          Float?
   suggestedLevel     String?
@@ -255,10 +300,11 @@ model AdmissionLead {
   rejectionReason    String?
   convertedStudentId String?
   assignedClassId    String?
-  convertedAt        String?
+  convertedAt        DateTime? @db.Date
   convertedBy        String?
   createdAt          DateTime  @default(now())
   createdBy          String?
+  createdById          String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   updatedAt          DateTime  @updatedAt
   updatedBy          String?
 }
@@ -268,7 +314,7 @@ model TeachingLog {
   id                String       @id @default(uuid())
   staffId           String
   staff             StaffMember  @relation(fields: [staffId], references: [id])
-  date              String       // YYYY-MM-DD
+  date              DateTime @db.Date // YYYY-MM-DD
   classId           String
   sessionId         String?
   sessions          Int          @default(1)
@@ -285,13 +331,14 @@ model AssistantWorkLog {
   id          String      @id @default(uuid())
   staffId     String
   staff       StaffMember @relation(fields: [staffId], references: [id])
-  date        String      // YYYY-MM-DD
+  date        DateTime @db.Date // YYYY-MM-DD
   hoursWorked Float
   hourlyRate  Float
   totalAmount Float
   note        String?
   createdAt   DateTime    @default(now())
   createdBy   String
+  createdById   String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
 }
 
 // 15. SalaryAdvance - Tạm ứng lương
@@ -300,7 +347,7 @@ model SalaryAdvance {
   staffId    String
   staff      StaffMember @relation(fields: [staffId], references: [id])
   amount     Float
-  date       String      // YYYY-MM-DD
+  date       DateTime @db.Date // YYYY-MM-DD
   reason     String?
   approvedBy String?
   createdAt  DateTime    @default(now())
@@ -310,12 +357,13 @@ model SalaryAdvance {
 model PayrollPeriod {
   id           String        @id @default(uuid())
   month        String        // YYYY-MM
-  startDate    String        // YYYY-MM-DD
-  endDate      String        // YYYY-MM-DD
+  startDate    DateTime @db.Date // YYYY-MM-DD
+  endDate      DateTime @db.Date // YYYY-MM-DD
   status       String        @default("draft") // draft | approved | paid
   note         String?
   createdAt    DateTime      @default(now())
   createdBy    String
+  createdById    String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   payrollItems PayrollItem[]
 }
 
@@ -355,7 +403,7 @@ model PayrollItem {
 // 18. Expense - Chi phí vận hành
 model Expense {
   id                 String             @id @default(uuid())
-  date               String             // YYYY-MM-DD
+  date               DateTime @db.Date // YYYY-MM-DD
   category           String             // Tiền mặt | Chuyển khoản | ...
   description        String
   amount             Float
@@ -365,20 +413,25 @@ model Expense {
   approvedBy         String?
   notes              String?
   createdBy          String
+  createdById          String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   inventoryMovements InventoryMovement[]
+
+  @@index([date])
 }
 
 // 19. DailyClose - Chốt ca thu chi cuối ngày
 model DailyClose {
   id          String   @id @default(uuid())
-  date        String   // YYYY-MM-DD
+  date        DateTime @db.Date // YYYY-MM-DD
   status      String   @default("completed") // completed
-  completedAt String
+  completedAt DateTime
   completedBy String
-  summary     String   // stored as JSON string
+  summary     Json     // JSON object (jsonb)
   note        String?
+
+  @@index([date])
 }
 
 // 20. AuditLog - Nhật ký thay đổi hệ thống
@@ -388,10 +441,14 @@ model AuditLog {
   entity    String
   entityId  String?
   details   String?
-  oldValue  String?  // Giá trị cũ (JSON string)
-  newValue  String?  // Giá trị mới (JSON string)
-  user      String
+  oldValue  Json?    // Giá trị cũ (jsonb)
+  newValue  Json?    // Giá trị mới (jsonb)
+  user      String   // Tên hiển thị (giữ để tương thích)
+  userId    String?  // FK tới User.id để truy vết chắc chắn
   timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
 }
 
 // 21. SystemParameter - Tham số hệ thống cấu hình
@@ -404,11 +461,12 @@ model SystemParameter {
   value         String
   unit          String?
   description   String?
-  effectiveFrom String
-  effectiveTo   String?
+  effectiveFrom DateTime @db.Date
+  effectiveTo   DateTime? @db.Date
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   createdBy     String
+  createdById     String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   updatedAt     DateTime? @updatedAt
   updatedBy     String?
 }
@@ -417,7 +475,7 @@ model SystemParameter {
 model FeatureFlag {
   key             String   @id
   enabled         Boolean  @default(false)
-  enabledForRoles String   @default("[]") // stored as JSON array string
+  enabledForRoles Json     @default("[]") // JSON array (jsonb)
   description     String?
 }
 
@@ -429,9 +487,10 @@ model ImportBatch {
   fileName     String
   rowCount     Int      @default(0)
   successCount Int      @default(0)
-  errorLog     String?  // stored as JSON string
+  errorLog     Json?    // JSON (jsonb)
   createdAt    DateTime @default(now())
   createdBy    String
+  createdById    String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
 }
 
 // 24. BackupSnapshot - Phiên bản sao lưu dữ liệu
@@ -442,6 +501,7 @@ model BackupSnapshot {
   status    String   // success | failed
   createdAt DateTime @default(now())
   createdBy String
+  createdById String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
 }
 
 // 25. Notification - Thông báo hệ thống
@@ -472,6 +532,7 @@ model InventoryCategory {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   createdBy   String
+  createdById   String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   updatedBy   String?
   items       InventoryItem[]
 }
@@ -493,6 +554,7 @@ model InventoryItem {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   createdBy        String
+  createdById        String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
   updatedBy        String?
   variants         InventoryVariant[]
   stocks           InventoryStock[]
@@ -506,7 +568,7 @@ model InventoryVariant {
   item       InventoryItem       @relation(fields: [itemId], references: [id])
   sku        String              @unique
   name       String
-  attributes String              @default("{}") // stored as JSON string
+  attributes Json                @default("{}") // JSON object (jsonb)
   barcode    String?
   isActive   Boolean             @default(true)
   createdAt  DateTime            @default(now())
@@ -566,13 +628,59 @@ model InventoryMovement {
   relatedRevenueOther   RevenueOther?      @relation(fields: [relatedRevenueOtherId], references: [id])
   relatedExpenseId      String?
   relatedExpense        Expense?           @relation(fields: [relatedExpenseId], references: [id])
+  saleBatchId           String?
+  saleBatch             InventorySaleBatch? @relation(fields: [saleBatchId], references: [id])
+  supplierId            String?            // NCC cho giao dịch nhập (purchase_in) — báo cáo nhập theo nhà cung cấp
+  supplier              Supplier?          @relation(fields: [supplierId], references: [id])
+  paymentStatus         String             @default("not_applicable") // not_applicable | unpaid | paid
+  issued                Boolean            @default(true) // false = đã thu tiền nhưng chưa phát hàng (chờ giao)
+  deliveredAt           DateTime?          // thời điểm phát hàng (khi issued chuyển true)
+  paymentMethod         String?
+  paymentDate           DateTime? @db.Date
+  paidAt                DateTime?
+  collectedBy           String?
   note                  String?
-  movementDate          String             // YYYY-MM-DD
+  movementDate          DateTime @db.Date // YYYY-MM-DD
   createdAt             DateTime           @default(now())
   createdBy             String
+  createdById             String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
+
+  @@index([movementDate])
+  @@index([itemId, variantId])
+  @@index([relatedStudentId])
+  @@index([saleBatchId])
+  @@index([supplierId])
+  @@index([paymentStatus, movementType])
+  @@index([issued, movementType])
 }
 
-// 32. Supplier - Nhà cung cấp
+// 32. InventorySaleBatch - Gom nhom giao dich ban/phat vat tu hang loat
+model InventorySaleBatch {
+  id             String              @id @default(uuid())
+  code           String              @unique
+  classId        String?
+  className      String?
+  itemId         String
+  variantId      String?
+  fromLocationId String?
+  movementDate   DateTime @db.Date
+  paymentStatus  String              @default("unpaid")
+  paymentMethod  String?
+  paymentDate    DateTime? @db.Date
+  totalStudents  Int                 @default(0)
+  totalQuantity  Float               @default(0.0)
+  totalAmount    Float               @default(0.0)
+  note           String?
+  createdAt      DateTime            @default(now())
+  createdBy      String
+  createdById      String?  // FK tới User.id (truy vết ổn định, song song createdBy hiển thị)
+  movements      InventoryMovement[]
+
+  @@index([classId, movementDate])
+  @@index([itemId, movementDate])
+}
+
+// 33. Supplier - Nhà cung cấp
 model Supplier {
   id        String   @id @default(uuid())
   name      String   @unique
@@ -582,9 +690,10 @@ model Supplier {
   note      String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  movements InventoryMovement[]
 }
 
-// 33. ClassNameHistory - Lịch sử đổi tên lớp học
+// 34. ClassNameHistory - Lịch sử đổi tên lớp học
 model ClassNameHistory {
   id        String   @id @default(uuid())
   classId   String

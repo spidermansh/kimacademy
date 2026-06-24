@@ -20,6 +20,7 @@ import DailyCloseModal from '../components/daily/DailyCloseModal';
 import QuickStudentModal from '../components/daily/QuickStudentModal';
 import QuickExpenseModal from '../components/daily/QuickExpenseModal';
 import QuickAdmissionModal from '../components/daily/QuickAdmissionModal';
+import TaskAssignmentPanel from '../components/TaskAssignmentPanel';
 
 interface TodayWorkspaceProps {
   students: Student[];
@@ -812,6 +813,9 @@ export default function TodayWorkspace({
           )}
         </div>
       </div>
+
+      {/* ─── GIAO VIỆC THỦ CÔNG ─── */}
+      <TaskAssignmentPanel currentUser={currentUser} />
 
       {/* ─── MAIN CONTENT COLUMNS ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { prisma } from '../../src/infrastructure/db/prisma.client';
 import { REPORT_GROUPS } from '../../src/shared/business/reports';
+import { parseFeeHistory } from '../../src/shared/business/tuition';
+import { toArray, toObject } from '../../src/shared/json';
+import { toDateStr, toIso } from '../../src/api/utils/dates';
 
 function getReportById(id: string) {
   for (const group of REPORT_GROUPS) {
@@ -59,13 +62,13 @@ async function buildReportParams(filters: any = {}) {
       englishName: s.englishName,
       vietAnhName: s.vietnameseName && s.englishName ? `${s.vietnameseName} (${s.englishName})` : s.vietnameseName || s.englishName || s.name,
       gender: s.gender || '',
-      birthYear: s.birthDate ? parseInt(s.birthDate.slice(0, 4)) : 0,
+      birthYear: s.birthDate ? parseInt((toDateStr(s.birthDate) || '').slice(0, 4)) : 0,
       parentPhone: primaryContact ? primaryContact.phone : '',
       className: activeEnroll?.class.name || '',
       feePerSession: activeEnroll ? activeEnroll.feePerSession : 0,
-      feeHistory: activeEnroll ? JSON.parse(activeEnroll.feeHistory) : [],
+      feeHistory: activeEnroll ? parseFeeHistory(activeEnroll.feeHistory) : [],
       status: s.status as any,
-      enrollDate: s.enrollDate || '',
+      enrollDate: toDateStr(s.enrollDate) || '',
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),
       notes: s.notes || ''
@@ -84,10 +87,10 @@ async function buildReportParams(filters: any = {}) {
       maxStudents: c.maxStudents || 15,
       status: c.status as any,
       defaultFee: c.defaultFeePerSession,
-      scheduleDays: JSON.parse(c.scheduleDays),
+      scheduleDays: toArray<string>(c.scheduleDays),
       scheduleTime: c.scheduleTime || '',
       description: c.description || '',
-      schedule: c.scheduleTime ? `${JSON.parse(c.scheduleDays).join(', ')} — ${c.scheduleTime}` : '',
+      schedule: c.scheduleTime ? `${toArray<string>(c.scheduleDays).join(', ')} — ${c.scheduleTime}` : '',
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString()
     };
@@ -97,7 +100,7 @@ async function buildReportParams(filters: any = {}) {
     ...tuitionTxRaw.map(t => ({
       id: t.id,
       createdAt: t.createdAt.toISOString(),
-      paymentDate: t.paymentDate,
+      paymentDate: toDateStr(t.paymentDate) || '',
       studentId: t.studentId,
       studentName: students.find(s => s.id === t.studentId)?.name || 'Học viên',
       className: classesRaw.find(c => c.id === (enrollmentsRaw.find(e => e.id === t.enrollmentId)?.classId))?.name || '',
@@ -114,7 +117,7 @@ async function buildReportParams(filters: any = {}) {
     ...revenueOtherRaw.map(t => ({
       id: t.id,
       createdAt: t.createdAt.toISOString(),
-      paymentDate: t.paymentDate,
+      paymentDate: toDateStr(t.paymentDate) || '',
       studentId: t.studentId || '',
       studentName: students.find(s => s.id === t.studentId)?.name || 'Khách vãng lai',
       className: '',
@@ -138,7 +141,7 @@ async function buildReportParams(filters: any = {}) {
     classId: a.classId,
     className: a.class.name,
     enrollmentId: a.enrollmentId,
-    date: a.date,
+    date: toDateStr(a.date) || '',
     status: a.status as any,
     sessionsDeducted: a.sessionsDeducted,
     feeApplied: a.feeApplied,
@@ -150,7 +153,7 @@ async function buildReportParams(filters: any = {}) {
 
   const expenses = expensesRaw.map(e => ({
     id: e.id,
-    date: e.date,
+    date: toDateStr(e.date) || '',
     category: e.category,
     description: e.description,
     amount: e.amount,
@@ -173,7 +176,7 @@ async function buildReportParams(filters: any = {}) {
     otherMonthlyAllowanceNote: s.otherMonthlyAllowanceNote || '',
     bankAccount: s.bankAccount || '',
     bankName: s.bankName || '',
-    startDate: s.startDate,
+    startDate: toDateStr(s.startDate) || '',
     status: s.status as any,
     notes: s.notes || '',
     taxMethod: s.taxMethod || 'no_tax',
@@ -193,7 +196,7 @@ async function buildReportParams(filters: any = {}) {
       id: t.id,
       staffId: t.staffId,
       staffName: t.staff.name,
-      date: t.date,
+      date: toDateStr(t.date) || '',
       classId: t.classId,
       className: cls?.name || '',
       sessions: t.sessions,
@@ -212,7 +215,7 @@ async function buildReportParams(filters: any = {}) {
     staffId: a.staffId,
     staffName: a.staff.name,
     amount: a.amount,
-    date: a.date,
+    date: toDateStr(a.date) || '',
     reason: a.reason || '',
     approvedBy: a.approvedBy || '',
     createdAt: a.createdAt.toISOString()
@@ -248,11 +251,11 @@ async function buildReportParams(filters: any = {}) {
 
   const dailyCloses = dailyClosesRaw.map(d => ({
     id: d.id,
-    date: d.date,
+    date: toDateStr(d.date) || '',
     status: d.status as any,
-    completedAt: d.completedAt,
+    completedAt: toIso(d.completedAt) || '',
     completedBy: d.completedBy,
-    summary: JSON.parse(d.summary),
+    summary: toObject(d.summary),
     note: d.note || '',
     createdAt: (d as any).createdAt ? (d as any).createdAt.toISOString() : new Date().toISOString()
   }));
@@ -276,8 +279,8 @@ async function buildReportParams(filters: any = {}) {
     value: s.value,
     unit: s.unit || undefined,
     description: s.description || '',
-    effectiveFrom: s.effectiveFrom,
-    effectiveTo: s.effectiveTo || null,
+    effectiveFrom: toDateStr(s.effectiveFrom) || '',
+    effectiveTo: toDateStr(s.effectiveTo) || null,
     isActive: s.isActive,
     createdAt: s.createdAt.toISOString(),
     createdBy: s.createdBy,
@@ -289,7 +292,7 @@ async function buildReportParams(filters: any = {}) {
     id: l.id,
     leadCode: l.leadCode || '',
     studentName: l.studentName,
-    dateOfBirth: l.dateOfBirth || '',
+    dateOfBirth: toDateStr(l.dateOfBirth) || '',
     address: l.address || '',
     parentName: l.parentName || '',
     parentPhone: l.parentPhone,
@@ -298,13 +301,13 @@ async function buildReportParams(filters: any = {}) {
     learningNeed: l.learningNeed || '',
     consultationNote: l.consultationNote || '',
     assignedCounselor: l.assignedCounselor || '',
-    registrationDate: l.registrationDate,
+    registrationDate: toDateStr(l.registrationDate) || '',
     status: l.status as any,
-    testScheduleDate: l.testScheduleDate || '',
+    testScheduleDate: toDateStr(l.testScheduleDate) || '',
     testScheduleTime: l.testScheduleTime || '',
     testAssignee: l.testAssignee || '',
     testScheduleNote: l.testScheduleNote || '',
-    testDate: l.testDate || '',
+    testDate: toDateStr(l.testDate) || '',
     testType: l.testType || '',
     testScore: l.testScore ? Number(l.testScore) : undefined,
     suggestedLevel: l.suggestedLevel || '',
@@ -312,7 +315,7 @@ async function buildReportParams(filters: any = {}) {
     testResultNote: l.testResultNote || '',
     rejectionReason: l.rejectionReason || '',
     convertedStudentId: l.convertedStudentId || '',
-    convertedAt: l.convertedAt || undefined,
+    convertedAt: toIso(l.convertedAt) || undefined,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString()
   }));
@@ -324,10 +327,10 @@ async function buildReportParams(filters: any = {}) {
     classId: e.classId,
     className: e.class.name,
     feePerSession: e.feePerSession,
-    startDate: e.startDate,
-    endDate: e.endDate || undefined,
+    startDate: toDateStr(e.startDate) || '',
+    endDate: toDateStr(e.endDate) || undefined,
     isActive: e.isActive,
-    feeHistory: e.feeHistory || '[]',
+    feeHistory: parseFeeHistory(e.feeHistory),
     createdAt: e.createdAt.toISOString(),
     balance: e.ledgerEntries?.[0]?.balance ?? 0,
     sessionsRemaining: e.ledgerEntries?.[0]?.sessionsRemaining ?? 0
@@ -596,15 +599,24 @@ describe('Kim Academy v3 - Report Engine Tests', () => {
     expect(data[0]).toHaveProperty('desc');
   });
 
-  // 2. center_finance_summary
-  it('should run center_finance_summary report successfully', async () => {
-    const report = getReportById('center_finance_summary');
+  // 2. earned_revenue_monthly (tách từ center_finance_summary cũ — earned/gross)
+  it('should run earned_revenue_monthly report successfully', async () => {
+    const report = getReportById('earned_revenue_monthly');
     expect(report).toBeDefined();
-    const data = await report!.compute(await buildReportParams({ startDate: '2026-06-01', endDate: '2026-06-30' }));
-    expect(data.length).toBeGreaterThanOrEqual(1);
+    const data = await report!.compute(await buildReportParams({ month: '2026-06' }));
+    expect(data.length).toBe(7);
     expect(data[0]).toHaveProperty('metric');
     expect(data[0]).toHaveProperty('amount');
     expect(data[0]).toHaveProperty('desc');
+  });
+
+  // 2b. cash_flow_monthly (tách từ center_finance_summary cũ — cash/net)
+  it('should run cash_flow_monthly report successfully', async () => {
+    const report = getReportById('cash_flow_monthly');
+    expect(report).toBeDefined();
+    const data = await report!.compute(await buildReportParams({ month: '2026-06' }));
+    expect(data.length).toBe(5);
+    expect(data[4].metric).toContain('Lợi nhuận theo dòng tiền');
   });
 
   // 3. tuition_collected_summary
@@ -654,9 +666,9 @@ describe('Kim Academy v3 - Report Engine Tests', () => {
     expect(data.map(d => d.name)).toContain('Nguyễn Văn Báo Cáo');
   });
 
-  // 8. student_near_end_detail
-  it('should run student_near_end_detail report successfully', async () => {
-    const report = getReportById('student_near_end_detail');
+  // 8. student_sessions_low_detail (gộp "sắp hết" + "hết buổi")
+  it('should run student_sessions_low_detail report successfully', async () => {
+    const report = getReportById('student_sessions_low_detail');
     expect(report).toBeDefined();
     const data = await report!.compute(await buildReportParams({ threshold: 5 }));
     expect(data.length).toBe(1);

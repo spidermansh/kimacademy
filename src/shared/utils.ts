@@ -62,6 +62,60 @@ export const auth = {
   }
 };
 
+class NonJsonApiResponseError extends Error {
+  constructor(url: string) {
+    super(`Không gọi được API ${url}. Backend có thể chưa cập nhật/restart hoặc proxy đang trỏ nhầm sang frontend.`);
+    this.name = 'NonJsonApiResponseError';
+  }
+}
+
+function getConfiguredApiUrl(url: string): string {
+  const apiBaseUrl = String((import.meta as any).env?.VITE_API_BASE_URL || '').replace(/\/$/, '');
+  if (apiBaseUrl && url.startsWith('/api')) {
+    return `${apiBaseUrl}${url}`;
+  }
+  return url;
+}
+
+function getLocalApiFallbackUrl(url: string): string | null {
+  if (!url.startsWith('/api') || typeof window === 'undefined') {
+    return null;
+  }
+
+  const hostname = window.location.hostname;
+  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+  const fallbackPort = String((import.meta as any).env?.VITE_API_FALLBACK_PORT || '3031');
+
+  if (!isLocalHost || window.location.port === fallbackPort) {
+    return null;
+  }
+
+  return `${window.location.protocol}//${hostname}:${fallbackPort}${url}`;
+}
+
+async function parseApiResponse(response: Response, url: string): Promise<any> {
+  const contentType = response.headers.get('content-type') || '';
+  const bodyText = await response.text();
+
+  if (!bodyText) {
+    return null;
+  }
+
+  if (contentType.includes('application/json')) {
+    try {
+      return JSON.parse(bodyText);
+    } catch {
+      throw new Error('Phản hồi API không đúng định dạng JSON. Vui lòng thử lại hoặc kiểm tra backend.');
+    }
+  }
+
+  if (/^\s*</.test(bodyText)) {
+    throw new NonJsonApiResponseError(url);
+  }
+
+  throw new Error(bodyText.slice(0, 300) || 'Phản hồi API không hợp lệ');
+}
+
 // Common request helper with Authorization header
 async function request(url: string, options: RequestInit = {}) {
   const token = auth.getToken();
@@ -74,7 +128,7 @@ async function request(url: string, options: RequestInit = {}) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(url, { ...options, headers });
+  let response = await fetch(getConfiguredApiUrl(url), { ...options, headers });
 
   if (response.status === 401 || response.status === 403) {
     auth.clearToken();
@@ -82,9 +136,20 @@ async function request(url: string, options: RequestInit = {}) {
     throw new Error('Hết phiên đăng nhập. Vui lòng đăng nhập lại.');
   }
 
-  const data = await response.json();
+  let data: any;
+  try {
+    data = await parseApiResponse(response, url);
+  } catch (error) {
+    const fallbackUrl = getLocalApiFallbackUrl(url);
+    if (!(error instanceof NonJsonApiResponseError) || !fallbackUrl) {
+      throw error;
+    }
+
+    response = await fetch(fallbackUrl, { ...options, headers });
+    data = await parseApiResponse(response, url);
+  }
   if (!response.ok) {
-    throw new Error(data.message || 'Yêu cầu không thành công');
+    throw new Error(data?.message || 'Yêu cầu không thành công');
   }
   return data;
 }
@@ -582,6 +647,47 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     });
+  },
+  async createInventoryMovementsBulk(data: any): Promise<any> {
+    return request('/api/inventory/movements/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+  async collectInventoryPayment(id: string, data: { paymentDate: string; paymentMethod: string; note?: string }): Promise<any> {
+    return request(`/api/inventory/movements/${id}/collect-payment`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+  async deliverInventoryMovement(id: string, data: { note?: string } = {}): Promise<any> {
+    return request(`/api/inventory/movements/${id}/deliver`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+  // ===== Giao việc (AssignedTask) =====
+  async getMe(): Promise<any> {
+    return request('/api/auth/me');
+  },
+  async getTasks(params?: { assigneeUserId?: string; status?: string }): Promise<any[]> {
+    const qs = new URLSearchParams();
+    if (params?.assigneeUserId) qs.set('assigneeUserId', params.assigneeUserId);
+    if (params?.status) qs.set('status', params.status);
+    const q = qs.toString();
+    return request(`/api/tasks${q ? `?${q}` : ''}`);
+  },
+  async createTask(data: any): Promise<any> {
+    return request('/api/tasks', { method: 'POST', body: JSON.stringify(data) });
+  },
+  async updateTask(id: string, data: any): Promise<any> {
+    return request(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
+  async setTaskStatus(id: string, data: { status: string; completionNote?: string }): Promise<any> {
+    return request(`/api/tasks/${id}/status`, { method: 'POST', body: JSON.stringify(data) });
+  },
+  async deleteTask(id: string): Promise<any> {
+    return request(`/api/tasks/${id}`, { method: 'DELETE' });
   },
 };
 

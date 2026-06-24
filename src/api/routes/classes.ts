@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateBody } from '../utils/validate';
+import { createClassSchema } from '../schemas';
 
 export const classesRouter = Router();
 
 classesRouter.use(authenticateToken);
+const requireAcademicRole = requireRole(['admin', 'staff', 'accountant']);
 
 // Helper to format class response consistently with Frontend interface Class
 async function formatClass(c: any, staffMap?: Map<string, string>) {
@@ -71,12 +74,8 @@ classesRouter.get('/classes', async (req, res) => {
 });
 
 // POST create class
-classesRouter.post('/classes', async (req, res) => {
+classesRouter.post('/classes', requireAcademicRole, validateBody(createClassSchema), async (req, res) => {
   const data = req.body;
-  
-  if (!data.name || !data.teacherId) {
-    return res.status(400).json({ message: 'Thiếu tên lớp hoặc giáo viên chủ nhiệm' });
-  }
 
   try {
     const existing = await prisma.class.findUnique({
@@ -109,7 +108,7 @@ classesRouter.post('/classes', async (req, res) => {
         maxStudents: data.maxStudents ? Number(data.maxStudents) : 15,
         status: data.status || 'active',
         defaultFeePerSession: data.defaultFeePerSession !== undefined ? Number(data.defaultFeePerSession) : Number(data.defaultFee || 0),
-        scheduleDays: JSON.stringify(data.scheduleDays || []),
+        scheduleDays: Array.isArray(data.scheduleDays) ? data.scheduleDays : [],
         scheduleTime: data.scheduleTime || null,
         description: data.description || null
       }
@@ -123,7 +122,7 @@ classesRouter.post('/classes', async (req, res) => {
 });
 
 // PUT update class
-classesRouter.put('/classes/:id', async (req, res) => {
+classesRouter.put('/classes/:id', requireAcademicRole, async (req, res) => {
   const { id } = req.params;
   const data = req.body;
 
@@ -164,7 +163,7 @@ classesRouter.put('/classes/:id', async (req, res) => {
       maxStudents: data.maxStudents ? Number(data.maxStudents) : undefined,
       status: data.status,
       defaultFeePerSession: data.defaultFeePerSession !== undefined ? Number(data.defaultFeePerSession) : (data.defaultFee !== undefined ? Number(data.defaultFee) : undefined),
-      scheduleDays: data.scheduleDays ? JSON.stringify(data.scheduleDays) : undefined,
+      scheduleDays: Array.isArray(data.scheduleDays) ? data.scheduleDays : undefined,
       scheduleTime: data.scheduleTime,
       description: data.description
     };
@@ -207,7 +206,7 @@ classesRouter.put('/classes/:id', async (req, res) => {
 });
 
 // DELETE class
-classesRouter.delete('/classes/:id', async (req, res) => {
+classesRouter.delete('/classes/:id', requireAcademicRole, async (req, res) => {
   const { id } = req.params;
 
   try {

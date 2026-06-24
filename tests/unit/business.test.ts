@@ -3,6 +3,7 @@ import { prisma } from '../../src/infrastructure/db/prisma.client';
 import { StudentService, ClassService, SessionService, EnrollmentService, AttendanceService, TuitionService, AdmissionService, AuditService } from './services';
 import { studentsRouter } from '../../src/api/routes/students';
 import { enrollmentsRouter } from '../../src/api/routes/enrollments';
+import { toArray } from '../../src/shared/json';
 
 async function cleanDatabase() {
   await prisma.$executeRawUnsafe(`SET session_replication_role = 'replica';`);
@@ -32,6 +33,7 @@ async function cleanDatabase() {
     'Notification',
     'InventoryStock',
     'InventoryMovement',
+    'InventorySaleBatch',
     'InventoryVariant',
     'InventoryItem',
     'InventoryCategory',
@@ -757,14 +759,14 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
       }
     };
 
-    await updateFeeRoute!.route.stack[0].handle(mockReq, mockRes, () => {});
+    await updateFeeRoute!.route.stack[updateFeeRoute!.route.stack.length - 1].handle(mockReq, mockRes, () => {});
     expect(responseStatus).toBe(200);
 
     // Assert:
     // 1. Enrollment feePerSession updated to 150,000
     const updatedEnroll = await prisma.enrollment.findUnique({ where: { id: enrollment.id } });
     expect(updatedEnroll?.feePerSession).toBe(150000);
-    const history = JSON.parse(updatedEnroll?.feeHistory || '[]');
+    const history = toArray<any>(updatedEnroll?.feeHistory);
     expect(history.length).toBe(1);
     expect(history[0].oldFee).toBe(100000);
     expect(history[0].newFee).toBe(150000);
@@ -886,7 +888,7 @@ describe('Kim Academy v2 - Core Domain 15 Business Test Cases', () => {
       }
     };
 
-    await updateFeeRoute!.route.stack[0].handle(mockReq, mockRes, () => {});
+    await updateFeeRoute!.route.stack[updateFeeRoute!.route.stack.length - 1].handle(mockReq, mockRes, () => {});
     expect(responseStatus).toBe(200);
 
     // Assert:

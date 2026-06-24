@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { prisma } from '../../infrastructure/db/prisma.client';
 import { computeAlerts } from '../../shared/business/alerts';
+import { parseFeeHistory } from '../../shared/business/tuition';
+import { toArray, toJsonString } from '../../shared/json';
+import { toDateStr } from '../utils/dates';
 import { authenticateToken } from '../middleware/auth';
 
 export const notificationsRouter = Router();
@@ -108,11 +111,11 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
         englishName: s.englishName,
         vietAnhName: s.vietnameseName && s.englishName ? `${s.vietnameseName} (${s.englishName})` : s.vietnameseName || s.englishName || s.name,
         gender: s.gender || '',
-        birthYear: s.birthDate ? parseInt(s.birthDate.slice(0, 4)) : 0,
+        birthYear: s.birthDate ? parseInt((toDateStr(s.birthDate) || '').slice(0, 4)) : 0,
         parentPhone: primaryContact ? primaryContact.phone : '',
         className: activeEnroll?.class.name || '',
         feePerSession: activeEnroll ? activeEnroll.feePerSession : 0,
-        feeHistory: activeEnroll ? JSON.parse(activeEnroll.feeHistory) : [],
+        feeHistory: activeEnroll ? parseFeeHistory(activeEnroll.feeHistory) : [],
         status: s.status as any,
         enrollDate: s.enrollDate || '',
         createdAt: s.createdAt.toISOString(),
@@ -133,10 +136,10 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
         maxStudents: c.maxStudents || 15,
         status: c.status as any,
         defaultFee: c.defaultFeePerSession,
-        scheduleDays: JSON.parse(c.scheduleDays),
+        scheduleDays: toArray<string>(c.scheduleDays),
         scheduleTime: c.scheduleTime || '',
         description: c.description || '',
-        schedule: c.scheduleTime ? `${JSON.parse(c.scheduleDays).join(', ')} — ${c.scheduleTime}` : '',
+        schedule: c.scheduleTime ? `${toArray<string>(c.scheduleDays).join(', ')} — ${c.scheduleTime}` : '',
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString()
       };
@@ -146,7 +149,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       ...tuitionTxRaw.map(t => ({
         id: t.id,
         createdAt: t.createdAt.toISOString(),
-        paymentDate: t.paymentDate,
+        paymentDate: toDateStr(t.paymentDate) || '',
         studentId: t.studentId,
         studentName: students.find(s => s.id === t.studentId)?.name || 'Học viên',
         className: classesRaw.find(c => c.id === (enrollmentsRaw.find(e => e.id === t.enrollmentId)?.classId))?.name || '',
@@ -163,7 +166,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       ...revenueOtherRaw.map(t => ({
         id: t.id,
         createdAt: t.createdAt.toISOString(),
-        paymentDate: t.paymentDate,
+        paymentDate: toDateStr(t.paymentDate) || '',
         studentId: t.studentId || '',
         studentName: students.find(s => s.id === t.studentId)?.name || 'Khách vãng lai',
         className: '',
@@ -187,7 +190,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       classId: a.classId,
       className: a.class.name,
       enrollmentId: a.enrollmentId,
-      date: a.date,
+      date: toDateStr(a.date) || '',
       status: a.status as any,
       sessionsDeducted: a.sessionsDeducted,
       feeApplied: a.feeApplied,
@@ -199,7 +202,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
 
     const expenses = expensesRaw.map(e => ({
       id: e.id,
-      date: e.date,
+      date: toDateStr(e.date) || '',
       category: e.category,
       description: e.description,
       amount: e.amount,
@@ -222,7 +225,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       otherMonthlyAllowanceNote: s.otherMonthlyAllowanceNote || '',
       bankAccount: s.bankAccount || '',
       bankName: s.bankName || '',
-      startDate: s.startDate,
+      startDate: toDateStr(s.startDate) || '',
       status: s.status as any,
       notes: s.notes || '',
       taxMethod: s.taxMethod as any,
@@ -233,7 +236,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       applyUnemploymentInsurance: s.applyUnemploymentInsurance,
       insuranceBaseSalary: s.insuranceBaseSalary || 0,
       ratePerHour: s.ratePerHour || 0,
-      salaryHistory: s.salaryHistory || '[]',
+      salaryHistory: toJsonString(s.salaryHistory),
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString()
     }));
@@ -244,7 +247,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       staffName: l.staff.name,
       teacherId: l.staffId,
       teacherName: l.staff.name,
-      date: l.date,
+      date: toDateStr(l.date) || '',
       classId: l.classId,
       className: classMap.get(l.classId) || '',
       sessions: l.sessions,
@@ -262,7 +265,7 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       teacherId: a.staffId,
       teacherName: a.staff.name,
       amount: a.amount,
-      date: a.date,
+      date: toDateStr(a.date) || '',
       reason: a.reason || '',
       approvedBy: a.approvedBy || '',
       createdAt: a.createdAt.toISOString()
@@ -313,8 +316,8 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       value: p.value,
       unit: p.unit || '',
       description: p.description || '',
-      effectiveFrom: p.effectiveFrom,
-      effectiveTo: p.effectiveTo || null,
+      effectiveFrom: toDateStr(p.effectiveFrom) || '',
+      effectiveTo: toDateStr(p.effectiveTo) || null,
       isActive: p.isActive,
       createdAt: p.createdAt.toISOString(),
       createdBy: p.createdBy,
@@ -328,11 +331,11 @@ notificationsRouter.post('/notifications/generate', async (req, res) => {
       studentName: e.student.name,
       className: e.class.name,
       feePerSession: e.feePerSession,
-      startDate: e.startDate,
-      endDate: e.endDate || undefined,
+      startDate: toDateStr(e.startDate) || '',
+      endDate: toDateStr(e.endDate) || undefined,
       isActive: e.isActive,
       transferNote: e.transferNote || undefined,
-      feeHistory: JSON.parse(e.feeHistory || '[]'),
+      feeHistory: parseFeeHistory(e.feeHistory),
       createdAt: e.createdAt.toISOString(),
       createdBy: e.createdBy
     }));
