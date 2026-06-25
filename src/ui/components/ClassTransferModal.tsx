@@ -83,7 +83,7 @@ export default function ClassTransferModal({
         if (a.date < enr.startDate) return false;
         if (enr.endDate && a.date > enr.endDate) return false;
         return a.status !== 'excused';
-      }).length;
+      }).reduce((s, a) => s + (a.sessionsDeducted ?? 1), 0);
       const costUsed = sessionsUsed * (enr.feePerSession || 0);
       return { ...enr, sessionsUsed, costUsed };
     });
@@ -92,7 +92,7 @@ export default function ClassTransferModal({
   // Buổi đã dùng = tất cả buổi present + absent
   const totalSessionsUsed = enrollmentStats.length > 0
     ? enrollmentStats.reduce((s, e) => s + e.sessionsUsed, 0)
-    : attendanceHistory.filter(a => a.status !== 'excused').length;
+    : attendanceHistory.filter(a => a.status !== 'excused').reduce((s, a) => s + (a.sessionsDeducted ?? 1), 0);
 
   const totalCostUsed = enrollmentStats.length > 0
     ? enrollmentStats.reduce((s, e) => s + e.costUsed, 0)
@@ -145,7 +145,7 @@ export default function ClassTransferModal({
 
   const currentSessions = enrollmentStats.length > 0
     ? (enrollmentStats.find(e => e.isActive)?.sessionsUsed ?? 0)
-    : attendanceHistory.filter(a => a.status !== 'excused').length;
+    : attendanceHistory.filter(a => a.status !== 'excused').reduce((s, a) => s + (a.sessionsDeducted ?? 1), 0);
 
   const currentFee = student.feePerSession || 0;
   const currentTotalBought = currentFee > 0 ? Math.floor(totalPaidOffline / currentFee) : 0;

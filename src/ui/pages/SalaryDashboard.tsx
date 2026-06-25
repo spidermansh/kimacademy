@@ -302,13 +302,13 @@ export default function SalaryDashboard({ staff, classes, settings }: Props) {
                           {s.role === 'teacher' ? 'GV' : s.role === 'teaching_assistant' ? 'TG' : 'VP'}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-right">{s.role === 'teacher' ? `${s.totalSessions} buổi × ${formatCurrency(s.ratePerSession)}` : s.role === 'teaching_assistant' ? `${(s as any).totalHours || 0}h × ${formatCurrency((s as any).ratePerHour || 0)}` : '—'}</td>
-                      <td className="px-3 py-2.5 text-right font-medium">{s.role === 'teacher' ? formatCurrency(s.teachingIncome) : s.role === 'teaching_assistant' ? formatCurrency((s as any).hourlyIncome || 0) : '—'}</td>
-                      <td className="px-3 py-2.5 text-right">{formatCurrency(s.baseSalary)}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-700">{s.role === 'teacher' ? `${s.totalSessions} buổi × ${formatCurrency(s.ratePerSession)}` : s.role === 'teaching_assistant' ? `${(s as any).totalHours || 0}h × ${formatCurrency((s as any).ratePerHour || 0)}` : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-medium text-slate-800">{s.role === 'teacher' ? formatCurrency(s.teachingIncome) : s.role === 'teaching_assistant' ? formatCurrency((s as any).hourlyIncome || 0) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-700">{formatCurrency(s.baseSalary)}</td>
                       <td className="px-3 py-2.5 text-right font-medium text-slate-500" title={s.otherMonthlyAllowanceNote}>
                         {formatCurrency(s.otherMonthlyAllowance || 0)}
                       </td>
-                      <td className="px-3 py-2.5 text-right">
+                      <td className="px-3 py-2.5 text-right text-slate-700">
                         {isEditing ? (
                           <div className="flex flex-col gap-1 items-end">
                             <input type="number" value={editValues.otherSalary} onChange={e => setEditValues({ ...editValues, otherSalary: +e.target.value })}

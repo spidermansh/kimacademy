@@ -58,7 +58,10 @@ enrollmentsRouter.get('/enrollments', async (req, res) => {
       feeHistory: parseFeeHistory(e.feeHistory),
       createdAt: e.createdAt,
       sessionsRemaining: e.ledgerEntries[0]?.sessionsRemaining || 0,
-      balance: e.ledgerEntries[0]?.balance || 0
+      balance: e.ledgerEntries[0]?.balance || 0,
+      totalPaid: e.ledgerEntries[0]?.totalPaid || 0,
+      totalSpent: e.ledgerEntries[0]?.totalSpent || 0,
+      sessionsUsed: e.ledgerEntries[0]?.sessionsUsed || 0
     }));
 
     res.json(formatted);

@@ -433,7 +433,7 @@ export default function AttendanceManagement({ students, classes, transactions }
       const fee = Number(student.feePerSession) || 0;
       const totalBought = fee > 0 ? Math.floor(totalPaid / fee) : 0;
       
-      const totalUsed = allAttendance.filter(a => a.studentId === student.id && a.status !== 'excused').length;
+      const totalUsed = allAttendance.filter(a => a.studentId === student.id && a.status !== 'excused').reduce((s, a) => s + (a.sessionsDeducted ?? 1), 0);
       map[student.id] = totalBought - totalUsed;
     });
     return map;

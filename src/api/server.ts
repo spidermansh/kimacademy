@@ -1,5 +1,6 @@
 import express from 'express';
 import helmet from 'helmet';
+import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -37,6 +38,9 @@ const __dirname = path.dirname(__filename);
 
 // Security headers. CSP tắt vì FE là SPA tự build, cấu hình CSP riêng nếu cần.
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+
+// Nén gzip mọi response (giảm mạnh dung lượng JSON lớn như điểm danh).
+app.use(compression());
 
 // Middlewares
 app.use((req, res, next) => {
@@ -122,9 +126,12 @@ app.use('/api', (req, res) => {
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../../dist')));
+  // Bản build: frontend (index.html, assets/) và server.js cùng nằm trong dist/.
+  // Dùng đường dẫn theo thư mục chạy (cwd) để đúng cả khi server.js đã bundle vào dist/.
+  const distDir = path.resolve(process.cwd(), 'dist');
+  app.use(express.static(distDir));
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../dist/index.html'));
+    res.sendFile(path.join(distDir, 'index.html'));
   });
 }
 

@@ -257,8 +257,8 @@ function AppInner() {
     try {
       const [
         txData, studentData, classData, settingsData, staffData, expenseData,
-        attendanceData, enrollmentData, teachingLogData, advanceData, salaryData,
-        dailyCloseData, auditLogData, systemParametersData, admissionLeadsData
+        enrollmentData, teachingLogData, advanceData, salaryData,
+        dailyCloseData, systemParametersData, admissionLeadsData
       ] = await Promise.all([
         api.getTransactions(),
         api.getStudents(),
@@ -266,13 +266,11 @@ function AppInner() {
         api.getSettings(),
         api.getStaff(),
         api.getExpenses(),
-        api.getAttendance(),
         api.getEnrollments(),
         api.getTeachingLogs(),
         api.getSalaryAdvances(),
         api.getMonthlySalaries(),
         api.getDailyCloses(),
-        api.getAuditLogs(),
         api.getSystemParameters(),
         api.getAdmissionLeads().catch(() => [])
       ]);
@@ -281,16 +279,14 @@ function AppInner() {
       setSettings(settingsData);
       setStaff(staffData);
       setExpenses(expenseData);
-      setAttendance(attendanceData);
       setEnrollments(enrollmentData);
-      
+
       const populated = studentData.map((s: any) => populateStudentEnrollment(s, enrollmentData));
       setStudents(populated);
       setTeachingLogs(teachingLogData);
       setAdvances(advanceData);
       setSalaries(salaryData);
       setDailyCloses(dailyCloseData || []);
-      setAuditLogs(auditLogData || []);
       setSystemParameters(systemParametersData || []);
       setAdmissionLeads(admissionLeadsData || []);
     } catch (err) {
@@ -298,6 +294,10 @@ function AppInner() {
     } finally {
       setIsDataLoading(false);
     }
+
+    // TẢI NỀN dữ liệu nặng (điểm danh ~48k, audit log) — KHÔNG chặn render trang.
+    api.getAttendance().then(setAttendance).catch(() => {});
+    api.getAuditLogs().then((d: any) => setAuditLogs(d || [])).catch(() => {});
   };
 
   useEffect(() => {

@@ -148,7 +148,11 @@ export default function TuitionManagement({ students, transactions, classes, enr
   const [editFee, setEditFee] = useState('');
   const [feeChangeMode, setFeeChangeMode] = useState<'retroactive' | 'prospective'>('retroactive');
   const [saving, setSaving] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null); // enrollmentId của dòng đang mở
+  const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'left'>('active');
+  const [classFilter, setClassFilter] = useState('');
+  const [feeStatusFilter, setFeeStatusFilter] = useState<'all' | 'out' | 'low' | 'ok'>('all');
   const [localStudents, setLocalStudents] = useState<any[]>(students);
   const [expandedTab, setExpandedTab] = useState<'history' | 'chart' | 'feeLog'>('history');
   const [searchQuery, setSearchQuery] = useState('');
@@ -158,9 +162,9 @@ export default function TuitionManagement({ students, transactions, classes, enr
   }, [students]);
 
   useEffect(() => {
-    api.getAttendance()
-      .then(setAttendance)
-      .finally(() => setLoading(false));
+    // KHÔNG tải toàn bộ điểm danh (~48k bản ghi) — bảng chính tính từ SỔ CÁI
+    // (enrollment.totalSpent/balance/sessionsRemaining đã trả sẵn từ API).
+    setLoading(false);
 
     // Đọc query tìm kiếm từ localStorage nếu được chuyển hướng từ Học vụ sang
     const q = localStorage.getItem('tuition_search_query');
@@ -169,6 +173,16 @@ export default function TuitionManagement({ students, transactions, classes, enr
       localStorage.removeItem('tuition_search_query');
     }
   }, []);
+
+  // Tải điểm danh CHỈ cho HV đang mở chi tiết / đang sửa phí (theo nhu cầu, nhẹ).
+  useEffect(() => {
+    const sid = expandedStudentId || editingStudent?.id;
+    if (sid) {
+      api.getAttendance({ studentId: sid }).then(setAttendance).catch(() => setAttendance([]));
+    } else {
+      setAttendance([]);
+    }
+  }, [expandedStudentId, editingStudent]);
 
   // Build a map of class name → schedule days
   const classScheduleMap = useMemo(() => {
@@ -181,31 +195,71 @@ export default function TuitionManagement({ students, transactions, classes, enr
     return map;
   }, [classes]);
 
-  // Compute TuitionSummary for each student — supports prospective fee history and multi-class enrollments
-  const summaries: (any)[] = localStudents.map(student => {
-    const summary = computeTuitionSummary(student, transactions, attendance, enrollments);
-    const scheduleDays = classScheduleMap[summary.className] || [];
-    const predictedEnd = predictEndDate(summary.sessionsRemaining, scheduleDays);
+  const studentById = useMemo(() => {
+    const m = new Map<string, any>();
+    localStudents.forEach(s => m.set(s.id, s));
+    return m;
+  }, [localStudents]);
 
+  // MỖI GHI DANH (enrollment) = 1 dòng — khớp file template (HV học 2 lớp hiện 2 dòng,
+  // mỗi lớp có số buổi/học phí riêng). Số liệu lấy thẳng từ SỔ CÁI (không qua điểm danh thô).
+  const summaries: (any)[] = (enrollments || []).map((e: any) => {
+    const student = studentById.get(e.studentId) || {};
+    const fee = Number(e.feePerSession) || 0;
+    const totalPaid = Number(e.totalPaid) || 0;
+    const used = Number(e.sessionsUsed) || 0;
+    const remaining = Number(e.sessionsRemaining) || 0;
+    const bought = fee > 0 ? Math.round(totalPaid / fee) : used + remaining;
+    const scheduleDays = classScheduleMap[e.className] || [];
+    const predictedEnd = predictEndDate(remaining, scheduleDays);
     return {
-      ...summary,
+      studentId: e.studentId,
+      enrollmentId: e.id,
+      studentName: student.name || e.studentName || '',
+      englishName: student.englishName || '',
+      studentStatus: student.status || (e.isActive ? 'active' : 'left'),
+      className: e.className,
+      feePerSession: fee,
+      totalPaidOffline: totalPaid,
+      totalSessionsBought: bought,
+      totalSessionsUsed: used,
+      totalCostUsed: Number(e.totalSpent) || 0,
+      moneyRemaining: Number(e.balance) || 0,
+      sessionsRemaining: remaining,
+      isActive: e.isActive,
       predictedEnd,
       scheduleDays,
     };
-  }).filter(s => s.totalPaidOffline > 0 || s.feePerSession > 0);
+  }).filter((s: any) => s.totalPaidOffline > 0 || s.feePerSession > 0 || s.totalSessionsUsed > 0);
 
   // Sort: warning first
   const sorted = [...summaries].sort((a, b) => a.sessionsRemaining - b.sessionsRemaining);
 
   // Lọc theo searchQuery
+  const classOptions = useMemo(() => {
+    const set = new Set<string>();
+    sorted.forEach(s => { if (s.className) set.add(s.className); });
+    return Array.from(set).sort();
+  }, [sorted]);
+
   const filteredSorted = useMemo(() => {
-    if (!searchQuery.trim()) return sorted;
+    let list = sorted;
+    if (statusFilter !== 'all') list = list.filter(s => statusFilter === 'active' ? s.isActive : !s.isActive);
+    if (classFilter) list = list.filter(s => s.className === classFilter);
+    if (feeStatusFilter !== 'all') list = list.filter(s => {
+      if (s.feePerSession <= 0) return false; // lớp miễn phí/chưa cài → không thuộc nhóm lọc theo buổi
+      if (feeStatusFilter === 'out') return s.sessionsRemaining <= 0;
+      if (feeStatusFilter === 'low') return s.sessionsRemaining > 0 && s.sessionsRemaining <= 3;
+      return s.sessionsRemaining > 3; // còn buổi
+    });
     const lower = searchQuery.toLowerCase().trim();
-    return sorted.filter(s => 
-      s.studentName.toLowerCase().includes(lower) || 
+    if (lower) list = list.filter(s =>
+      s.studentName.toLowerCase().includes(lower) ||
+      (s.englishName && s.englishName.toLowerCase().includes(lower)) ||
       (s.className && s.className.toLowerCase().includes(lower))
     );
-  }, [sorted, searchQuery]);
+    return list;
+  }, [sorted, searchQuery, statusFilter, classFilter, feeStatusFilter]);
 
   const getStatusBadge = (remaining: number, feePerSession: number) => {
     if (feePerSession === 0) return { color: 'bg-slate-100 text-slate-500 border-slate-200', label: 'Chưa cài học phí', icon: null };
@@ -249,7 +303,7 @@ export default function TuitionManagement({ students, transactions, classes, enr
       .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
 
     const enrollAttendance = attendance.filter((a: any) => a.enrollmentId === activeEnroll.id);
-    const sessionsUsed = enrollAttendance.filter((a: any) => a.status !== 'excused').length;
+    const sessionsUsed = enrollAttendance.filter((a: any) => a.status !== 'excused').reduce((s: number, a: any) => s + (a.sessionsDeducted ?? 1), 0);
     const feeHistory: FeeChangeLog[] = parseFeeHistory(activeEnroll.feeHistory);
 
     // Mode A: Retroactive — recalculate everything with new fee
@@ -343,21 +397,53 @@ export default function TuitionManagement({ students, transactions, classes, enr
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Search Bar */}
-          <div className="flex items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="relative flex-1">
+          {/* Thanh tìm kiếm & bộ lọc */}
+          <div className="flex flex-wrap items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Tìm kiếm học viên hoặc lớp học..."
+                placeholder="Tìm tên Việt / tên Anh / lớp..."
                 className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
               />
             </div>
-            {searchQuery && (
+            {/* Lọc theo lớp */}
+            <select
+              value={classFilter}
+              onChange={e => setClassFilter(e.target.value)}
+              className="px-3 py-2 border border-slate-300 rounded-xl text-sm text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            >
+              <option value="">Tất cả lớp</option>
+              {classOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {/* Lọc theo trạng thái học phí */}
+            <select
+              value={feeStatusFilter}
+              onChange={e => setFeeStatusFilter(e.target.value as 'all' | 'out' | 'low' | 'ok')}
+              className="px-3 py-2 border border-slate-300 rounded-xl text-sm text-slate-700 bg-white outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            >
+              <option value="all">Mọi trạng thái HP</option>
+              <option value="out">⚠️ Hết buổi</option>
+              <option value="low">Sắp hết (≤3 buổi)</option>
+              <option value="ok">Còn buổi</option>
+            </select>
+            {/* Tình trạng học viên */}
+            <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
+              {(([['active', 'Đang học'], ['left', 'Đã nghỉ'], ['all', 'Tất cả']]) as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setStatusFilter(val as 'all' | 'active' | 'left')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${statusFilter === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {(searchQuery || classFilter || feeStatusFilter !== 'all' || statusFilter !== 'active') && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => { setSearchQuery(''); setClassFilter(''); setFeeStatusFilter('all'); setStatusFilter('active'); }}
                 className="text-xs text-slate-400 hover:text-indigo-600 font-semibold cursor-pointer"
               >
                 Xóa bộ lọc
@@ -384,7 +470,7 @@ export default function TuitionManagement({ students, transactions, classes, enr
               <tbody className="divide-y divide-slate-50">
                 {filteredSorted.map(s => {
                 const badge = getStatusBadge(s.sessionsRemaining, s.feePerSession);
-                const isExpanded = expandedId === s.studentId;
+                const isExpanded = expandedId === s.enrollmentId;
                 const att = getStudentAttendance(s.studentId);
                 const txs = getStudentTransactions(s.studentId);
                 const student = localStudents.find(st => st.id === s.studentId);
@@ -410,7 +496,7 @@ export default function TuitionManagement({ students, transactions, classes, enr
                 const balanceData = buildBalanceTimeline(s.studentName, s.feePerSession, txs, attendance, s.studentId, feeHistory);
 
                 return (
-                  <React.Fragment key={s.studentId}>
+                  <React.Fragment key={s.enrollmentId}>
                     <tr className={`hover:bg-slate-50/70 transition-colors ${s.sessionsRemaining <= 0 && s.feePerSession > 0 ? 'bg-red-50/40' : s.sessionsRemaining <= 3 && s.feePerSession > 0 ? 'bg-amber-50/40' : ''}`}>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -419,6 +505,7 @@ export default function TuitionManagement({ students, transactions, classes, enr
                           </div>
                           <div>
                             <span className="font-semibold text-slate-800">{s.studentName}</span>
+                            {s.englishName && <span className="text-slate-400 font-normal text-xs"> · {s.englishName}</span>}
                             {/* 4.2.a: Prediction badge */}
                             {s.predictedEnd && s.sessionsRemaining > 0 && (
                               <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
@@ -480,7 +567,10 @@ export default function TuitionManagement({ students, transactions, classes, enr
                       </td>
                       <td className="px-4 py-4">
                         <button
-                          onClick={() => { setExpandedId(isExpanded ? null : s.studentId); setExpandedTab('history'); }}
+                          onClick={() => {
+                            if (isExpanded) { setExpandedId(null); setExpandedStudentId(null); }
+                            else { setExpandedId(s.enrollmentId); setExpandedStudentId(s.studentId); setExpandedTab('history'); }
+                          }}
                           className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400"
                         >
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

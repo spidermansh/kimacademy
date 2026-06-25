@@ -7,6 +7,7 @@ export interface ExpectedLedger {
   totalSpent: number;
   balance: number;
   sessionsRemaining: number;
+  sessionsUsed: number;
 }
 
 /**
@@ -41,11 +42,13 @@ export async function computeExpectedLedger(
     (sum, a) => sum + a.feeApplied * a.sessionsDeducted,
     0
   );
+  // Số buổi đã học thực = Σ sessionsDeducted (độc lập học phí; đúng cả lớp miễn phí).
+  const sessionsUsed = attendance.reduce((sum, a) => sum + a.sessionsDeducted, 0);
   const balance = totalPaid - totalSpent;
   const fee = enroll.feePerSession;
   const sessionsRemaining = fee > 0 ? Math.floor(balance / fee) : 0;
 
-  return { totalPaid, totalSpent, balance, sessionsRemaining };
+  return { totalPaid, totalSpent, balance, sessionsRemaining, sessionsUsed };
 }
 
 /**
@@ -106,6 +109,7 @@ export async function findLedgerDrift(db: DbClient): Promise<LedgerDrift[]> {
           totalSpent: ledger.totalSpent,
           balance: ledger.balance,
           sessionsRemaining: ledger.sessionsRemaining,
+          sessionsUsed: ledger.sessionsUsed ?? 0,
         },
         expected,
       });

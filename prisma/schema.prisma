@@ -268,6 +268,7 @@ model TuitionLedgerEntry {
   totalSpent        Float      @default(0.0)
   balance           Float      @default(0.0)
   sessionsRemaining Int        @default(0)
+  sessionsUsed      Int        @default(0) // số buổi đã học thực (Σ sessionsDeducted) — độc lập phí
   lastUpdatedAt     DateTime   @default(now())
 }
 

@@ -65,8 +65,11 @@ export function computeTuitionCost(
   const hasProspective = prospective.length > 0;
 
   if (!hasProspective) {
-    // Đơn giản: tất cả các buổi đều tính theo học phí hiện tại
-    const sessionsUsed = attendance.filter(a => a.studentId === studentId && a.status !== 'excused').length;
+    // Đơn giản: tất cả các buổi đều tính theo học phí hiện tại.
+    // Dùng TỔNG sessionsDeducted (vắng = 0) thay vì đếm bản ghi.
+    const sessionsUsed = attendance
+      .filter(a => a.studentId === studentId && a.status !== 'excused')
+      .reduce((s, a) => s + (a.sessionsDeducted ?? 1), 0);
     return sessionsUsed * currentFee;
   }
 
@@ -102,7 +105,9 @@ export function computeTuitionSummary(
   const studentEnrollments = enrollments.filter(e => e.studentId === student.id);
   const studentAttendance = attendance.filter(a => a.studentId === student.id && a.status !== 'excused');
 
-  const totalSessionsUsed = studentAttendance.length;
+  // Số buổi đã học = TỔNG sessionsDeducted (buổi vắng có deducted=0 sẽ không tính),
+  // nhất quán với sổ cái (totalSpent) và chi phí. KHÔNG dùng .length (đếm cả buổi vắng).
+  let totalSessionsUsed = studentAttendance.reduce((sum, a) => sum + (a.sessionsDeducted ?? 1), 0);
 
   // Tính chi phí dựa trên enrollments
   let totalCostUsed = 0;
@@ -144,6 +149,14 @@ export function computeTuitionSummary(
     breakdown.cost += cost;
     classBreakdownMap.set(a.className, breakdown);
   });
+
+  // TỐI ƯU TẢI: khi KHÔNG nạp dữ liệu điểm danh thô (để tránh kéo 48k bản ghi),
+  // lấy "đã học" & "chi phí" trực tiếp từ SỔ CÁI (totalSpent) — kết quả giống hệt.
+  if (studentAttendance.length === 0 && studentEnrollments.length > 0) {
+    totalCostUsed = studentEnrollments.reduce((s, e) => s + ((e as any).totalSpent ?? 0), 0);
+    // Số buổi đã học = Σ sessionsUsed của sổ cái (đúng cả lớp miễn phí, không qua phí).
+    totalSessionsUsed = studentEnrollments.reduce((s, e) => s + ((e as any).sessionsUsed ?? 0), 0);
+  }
 
   const activeEnrollments = studentEnrollments.filter(e => e.isActive);
 

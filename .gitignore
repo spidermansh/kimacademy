@@ -26,3 +26,9 @@ dist-ssr
 data/
 backups/
 scratch/
+
+# Dữ liệu import KIM ENGLISH — file Excel thật (riêng tư) + template & báo cáo sinh ra. KHÔNG commit.
+data-import/
+data-templates/
+scripts/kimenglish/out/
+scripts/kimenglish/_*.mjs
