@@ -30,6 +30,7 @@ import { startLedgerReconcileJob } from './jobs/ledger-reconcile.job';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // chạy sau proxy (Render) — để req.ip & rate-limit đúng
 const PORT = process.env.PORT || 3021;
 const corsOrigins = getCorsOrigins();
 
@@ -91,12 +92,18 @@ declare global {
 }
 
 // Base route checks — kiểm tra cả kết nối DB.
-app.get('/api/health', async (req, res) => {
+// Liveness — KHÔNG gọi DB. Health check của Render/hosting ping liên tục; nếu gọi DB
+// (Neon free hay "ngủ"/chậm) sẽ timeout → bị coi là chết → khởi động lại liên tục (502 chập chờn).
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', version: '3.0.0' });
+});
+// Readiness — kiểm tra kết nối DB riêng (gọi thủ công khi cần, không dùng cho health check).
+app.get('/api/health/db', async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', version: '3.0.0', db: 'up' });
-  } catch (err: any) {
-    res.status(503).json({ status: 'degraded', version: '3.0.0', db: 'down' });
+    res.json({ db: 'up' });
+  } catch {
+    res.status(503).json({ db: 'down' });
   }
 });
 
